@@ -185,3 +185,48 @@ def fit_peri_cp_pca(subj_pcp_lr):
     basis  = pd.DataFrame(basis_rows, columns=subj_pcp_lr.columns)
 
     return basis, scores, cumulative_ve
+
+
+def get_subj_pca_ve(subj_pcp_lr, group_pca_basis, subj_pca_scores):
+    """Compute variance explained by PCA reconstruction at each level.
+
+    For each subject, reconstructs their peri-CP LR curve using 1, 2, or 3 PCs
+    and computes R-squared (1 - SS_residual / SS_total) relative to the group mean.
+
+    Parameters:
+        subj_pcp_lr (pd.DataFrame) - Subject peri-CP learning rates (subjects x positions).
+        group_pca_basis (pd.DataFrame) - PCA basis vectors (PCs as rows).
+        subj_pca_scores (pd.DataFrame) - PCA scores for each subject.
+
+    Returns:
+        pd.DataFrame with columns 've_pc1', 've_pc1_pc2', 've_pc1_pc2_pc3'.
+    """
+    n_subj = len(subj_pcp_lr)
+    actual = subj_pcp_lr.values
+    mean_lr = actual.mean(axis=0)
+    basis = group_pca_basis.values
+
+    # Get score columns
+    score_cols = [c for c in subj_pca_scores.columns if c.startswith('Score_')]
+    scores = subj_pca_scores[score_cols].values
+
+    # Compute VE for each reconstruction level
+    ve_data = np.zeros((n_subj, 3))
+
+    for i in range(n_subj):
+        actual_i = actual[i]
+
+        # Total sum of squares relative to group mean
+        ss_total = np.sum((actual_i - mean_lr) ** 2)
+
+        # Reconstruct with 1, 2, 3 PCs
+        for n_pcs in range(1, 4):
+            recon = mean_lr.copy()
+            for pc in range(n_pcs):
+                recon = recon + scores[i, pc] * basis[pc]
+
+            # Residual sum of squares
+            ss_residual = np.sum((actual_i - recon) ** 2)
+            ve_data[i, n_pcs - 1] = 1 - ss_residual / ss_total if ss_total > 0 else 0
+
+    return pd.DataFrame(ve_data, columns=['ve_pc1', 've_pc1_pc2', 've_pc1_pc2_pc3'])

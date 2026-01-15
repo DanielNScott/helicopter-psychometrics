@@ -21,3 +21,11 @@ FIT_SUBJECT_PARAMS = False
 SUBJ_DATA_FILE = 'McGuireNassar2014data.csv'
 SUBJ_DATA_DIR = './data/'
 MAX_SUBJ_NUM = 100 # Reduce for debugging
+
+# Figure output settings
+FIGURES_DIR = './figs/'
+FIG_FMT = '.svg'
+
+# Standard figure sizes
+FIG_STD_WIDTH  = 6.4
+FIG_STD_HEIGHT = 4.8
