@@ -264,6 +264,66 @@ def plot_bar_with_arrows(base_vec, arrow_vecs, labels=None, title=None, ax=None)
         ax.set_title(title)
 
 
+def plot_score_reliability(reliabilities, ax=None):
+    """Plot split-half reliability of PCA scores as mean +/- 2 SD.
+
+    Parameters:
+        reliabilities (pd.DataFrame) - DataFrame with 'Rho Score 0', etc. columns.
+        ax (matplotlib.axes.Axes) - Axes to plot on. If None, creates new figure.
+    """
+    if ax is None: fig, ax = plt.subplots()
+
+    # Get score columns
+    cols = [c for c in reliabilities.columns if c.startswith('Rho Score')]
+    labels = [f'PC{i+1}' for i in range(len(cols))]
+
+    # Compute mean and SD
+    means = reliabilities[cols].mean().values
+    sds = reliabilities[cols].std().values
+
+    # Plot points with error bars
+    xs = range(len(cols))
+    ax.errorbar(xs, means, yerr=2*sds, fmt='o', capsize=4)
+
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('Split-Half Correlation')
+    ax.set_ylim(-0.2, 1.2)
+    ax.set_title('PCA Score Reliability')
+    ax.grid(alpha=0.2)
+
+
+def plot_beta_reliability(reliabilities, ax=None):
+    """Plot split-half reliability of regression betas as mean +/- 2 SD.
+
+    Parameters:
+        reliabilities (pd.DataFrame) - DataFrame with 'Rho n0_beta_...' columns.
+        ax (matplotlib.axes.Axes) - Axes to plot on. If None, creates new figure.
+    """
+    if ax is None: fig, ax = plt.subplots()
+
+    # Get beta columns
+    cols = [c for c in reliabilities.columns if 'beta_' in c]
+
+    # Extract short labels from column names
+    labels = [c.split('beta_')[-1].upper() for c in cols]
+
+    # Compute mean and SD
+    means = reliabilities[cols].mean().values
+    sds = reliabilities[cols].std().values
+
+    # Plot points with error bars
+    xs = range(len(cols))
+    ax.errorbar(xs, means, yerr=2*sds, fmt='o', capsize=4)
+
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels)
+    ax.set_ylabel('Split-Half Correlation')
+    ax.set_ylim(-0.2, 1.2)
+    ax.set_title('Regression Beta Reliability')
+    ax.grid(alpha=0.2)
+
+
 def cdf(x):
     inds = np.argsort(x)
     frac = np.arange(1,len(x)+1)/ (len(x)+1)

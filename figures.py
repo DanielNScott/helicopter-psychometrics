@@ -457,3 +457,67 @@ def compile_figure_3(cleanup=True):
     if cleanup:
         for f in [row1_ab, row1, row2_de, row2, combined, labeled]:
             if os.path.exists(f): os.remove(f)
+
+
+def figure_4(reliabilities, savefig=True, close=True):
+    """Generate Figure 4: Split-half reliability of parameter estimates.
+
+    Figure 4 layout:
+        [A] PCA score reliability
+        [B] Regression beta reliability
+
+    Parameters:
+        reliabilities (pd.DataFrame) - DataFrame from do_split_half_analysis.
+        savefig (bool) - Whether to save individual panel figures.
+        close (bool) - Whether to close figures after saving.
+    """
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    # --- Panel A: PCA score reliability ---
+    fig, ax = plt.subplots()
+    plot_score_reliability(reliabilities, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig4_A' + FIG_FMT, dpi=300)
+
+    # --- Panel B: Regression beta reliability ---
+    fig, ax = plt.subplots()
+    plot_beta_reliability(reliabilities, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig4_B' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def compile_figure_4(cleanup=True):
+    """Compile Figure 4 from individual panels.
+
+    Layout:
+        [A] [B]  (score reliability, beta reliability)
+    """
+    # Input panel files
+    panel_a = FIGURES_DIR + 'fig4_A' + FIG_FMT
+    panel_b = FIGURES_DIR + 'fig4_B' + FIG_FMT
+
+    # Intermediate files
+    combined = FIGURES_DIR + 'fig4_combined.svg'
+    labeled = FIGURES_DIR + 'fig4_labeled.svg'
+    final = FIGURES_DIR + 'fig4_final.svg'
+
+    # Merge panels horizontally
+    combine_svgs_horizontal(panel_a, panel_b, combined)
+
+    # Add panel labels
+    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=330, y=20, font_size=14)
+
+    # Scale to final width
+    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
+
+    # Convert to PDF
+    svg_to_pdf(final, final.replace('.svg', '.pdf'))
+
+    # Clean up intermediate files
+    if cleanup:
+        for f in [combined, labeled]:
+            if os.path.exists(f): os.remove(f)

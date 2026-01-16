@@ -1,10 +1,40 @@
 """Functions for aggregating and subsetting subject and task data."""
 from configs import *
-from copy import deepcopy
+
+
+def get_relinds(cp, endpoint=4):
+    """
+    Assigns each trial two indices, locating it relative to two proximal CPs.
+
+    Parameters:
+        cp: Array of boolean changepoint indicators
+
+    Returns:
+        pre: Array of indices relative to next changepoint.
+        pst: Array of indices relative to previous changepoint.
+    """
+    pre = np.full_like(cp, np.nan, dtype=float)
+    pst = np.full_like(cp, np.nan, dtype=float)
+
+    # Change-point indices themselves
+    change_indices = np.where(cp == 1)[0]
+
+    # Determine how far each peri-cp trial is before and after each CP
+    for idx in change_indices:
+
+        # Every trial before and at a CP gets a pre index
+        pre[idx-1:idx+1] = [-1, 0]
+
+        # Every trial after a CP gets a post index (posts never overlap CP)
+        end = min(idx + endpoint, len(cp))
+        pst[idx:end] = np.arange(0, endpoint)[:end-idx]
+
+    return pre, pst
+
 
 def align_trials(task, endpoint=4):
-    """Build a matrix of trial indices aligned to changepoints."""
-    
+    """Builds a matrix assigning each CP (row) a vector of proximal trial indices (columns)"""
+
     # Peri-changepoint trial positions to consider
     pcp_trials = np.arange(-1, endpoint)
 
@@ -38,61 +68,33 @@ def align_trials(task, endpoint=4):
     return aligned_inds, pcp_trials
 
 
-def get_relinds(cp, endpoint=4):
-    """
-    Get relative indices of each trial with reference to each changepoint.
-
-    Notes:
-    - Each trial may be before or after a changepoint, or before one and after another.
-    - We will filter trials in subsequent analyses based on combinations of these indices.
-
-    Parameters:
-        cp (np.ndarray) - Array indicating changepoints.
-
-    Returns:
-        pre (np.ndarray) - Array of pre-changepoint indices.
-        pst (np.ndarray) - Array of post-changepoint indices.
-    """
-    pre = np.full_like(cp, np.nan, dtype=float)
-    pst = np.full_like(cp, np.nan, dtype=float)
-
-    # Change-point indices themselves
-    change_indices = np.where(cp == 1)[0]
-
-    # Determine how far each peri-cp trial is before and after each CP
-    for idx in change_indices:
-
-        # Every trial before and at a CP gets a pre index
-        pre[idx-1:idx+1] = [-1, 0]
-
-        # Every trial after a CP gets a post index (posts never overlap CP)
-        end = min(idx + endpoint, len(cp))
-        pst[idx:end] = np.arange(0, endpoint)[:end-idx]
-
-    return pre, pst
-
-
 def subset(subj_orig, task_orig, inds):
-    """Subset subject and task data to specified trial indices."""
+    """Subset one subject and one task to specific trial indices."""
+    from subjects import Subject, Responses, Beliefs
+    from tasks import ChangepointTask
 
-    subj = deepcopy(subj_orig)
-    task = deepcopy(task_orig)
+    # Create new subject with subsetted responses and beliefs
+    responses = Responses(len(inds))
+    for attr in vars(subj_orig.responses):
+        val = getattr(subj_orig.responses, attr)
+        if isinstance(val, np.ndarray):
+            setattr(responses, attr, val[inds])
 
-    # Subject data
-    subj.responses.pe     = subj.responses.pe[inds]
-    subj.responses.pred   = subj.responses.pred[inds]
-    subj.responses.update = subj.responses.update[inds]
+    beliefs = Beliefs(len(inds))
+    for attr in vars(subj_orig.beliefs):
+        val = getattr(subj_orig.beliefs, attr)
+        if isinstance(val, np.ndarray):
+            setattr(beliefs, attr, val[inds])
 
-    subj.beliefs.cpp    = subj.beliefs.cpp[inds]
-    subj.beliefs.relunc = subj.beliefs.relunc[inds]
+    subj = Subject(responses=responses, beliefs=beliefs)
 
-    # Task data
-    task.obs      = task.obs[inds]
-    task.state    = task.state[inds]
-    task.new_blk  = task.new_blk[inds]
-    task.noise_sd = task.noise_sd[inds]
-    task.hazard   = task.hazard[inds]
-    task.cp       = task.cp[inds]
+    # Create new task with subsetted trial arrays
+    task = ChangepointTask()
+    task.ntrials = len(inds)
+    for attr in vars(task_orig):
+        val = getattr(task_orig, attr)
+        if isinstance(val, np.ndarray) and len(val) == task_orig.ntrials:
+            setattr(task, attr, val[inds])
 
     # Always pretend subdivision produces a new block
     task.new_blk[0] = 1
@@ -108,8 +110,8 @@ def subset(subj_orig, task_orig, inds):
     return subj, task
 
 
-def split_within_subjects(subjs, tasks, frac=0.5):
-    """Split each subject's trials into two non-overlapping halves."""
+def split_within_subjects(subjs, tasks):
+    """Iterate over subject-task pairs and split each in half internally."""
 
     # Initialize split halves
     subjs_a, subjs_b, tasks_a, tasks_b = [], [], [], []
@@ -134,19 +136,9 @@ def split_within_subjects(subjs, tasks, frac=0.5):
         inds_a = np.sort(inds_a)
         inds_a = np.sort(inds_a)
 
-        # Split-half 1
+        # Split each half
         subj_a, task_a = subset(subjs[i], tasks[i], inds_a)
-
-        # Split-half 2
         subj_b, task_b = subset(subjs[i], tasks[i], inds_b)
-
-        # Make sure task length parameters are correct
-        task_a.ntrials = len(inds_a)
-        task_b.ntrials = len(inds_b)
-
-        # Make sure subjects have correct task params
-        subj_a.set_from_task(task_a)
-        subj_b.set_from_task(task_b)
 
         # Append results to lists
         subjs_a.append(subj_a)
@@ -158,7 +150,7 @@ def split_within_subjects(subjs, tasks, frac=0.5):
 
 
 def subset_within_subjects(subjs, tasks, frac=0.5):
-    """Subset each subject's trials to a contiguous fraction."""
+    """Iterate over subject-task pairs and subset each to a fixed fraction of random trials."""
 
     # Initialize split halves
     subjs_a, tasks_a = [], []
@@ -183,7 +175,7 @@ def subset_within_subjects(subjs, tasks, frac=0.5):
 
 
 def subset_between_subjects(subjs, tasks, frac=0.5):
-    """Subset to a random fraction of subjects."""
+    """Split paired lists of subjects and tasks into two random subsets."""
 
     # Initialize split halves
     subjs_a, tasks_a = [], []
@@ -203,4 +195,4 @@ def subset_between_subjects(subjs, tasks, frac=0.5):
     subjs_b = [subjs[i] for i in inds_b]
     tasks_b = [tasks[i] for i in inds_b]
 
-    return subjs_a, tasks_a, subjs_b, tasks_b
+    return subjs_a, subjs_b, tasks_a, tasks_b
