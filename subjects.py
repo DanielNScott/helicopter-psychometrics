@@ -12,7 +12,7 @@ DEFAULT_PARAMS_SUBJ = {
     'drift':     0.0,
     'init_state_est': 150.0,
     'init_runlen_est': 10.0,
-    'noise_sd_update': 0.0,
+    'noise_sd_update': 2.0,
     'limit_updates': True,
     'clip': True
 }
