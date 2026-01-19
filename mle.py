@@ -97,7 +97,7 @@ def simulate_subjects(param_ranges, tasks, n_reps=1, fixed_params=None):
     return subjects, true_params
 
 
-def generate_tasks(n_subjects, n_tasks_per_subject, task_params=None):
+def generate_tasks(n_subjects, n_tasks_per_subject, task_params=None, blocks=None):
     """
     Generate tasks for parameter recovery studies.
 
@@ -105,6 +105,7 @@ def generate_tasks(n_subjects, n_tasks_per_subject, task_params=None):
         n_subjects (int)         - Number of subjects
         n_tasks_per_subject (int)- Number of tasks per subject
         task_params (dict)       - Task generation parameters
+        blocks (list)            - Optional block specifications for simulate_cpt
 
     Returns:
         tasks (list) - List of task lists, tasks[i][j] is task j for subject i
@@ -122,7 +123,7 @@ def generate_tasks(n_subjects, n_tasks_per_subject, task_params=None):
     # Generate tasks
     tasks = []
     for s in range(n_subjects):
-        subj_tasks = [simulate_cpt(task_params) for _ in range(n_tasks_per_subject)]
+        subj_tasks = [simulate_cpt(task_params, blocks=blocks) for _ in range(n_tasks_per_subject)]
         tasks.append(subj_tasks)
 
     return tasks
@@ -404,7 +405,7 @@ def analyze_recovery(true_params, results):
 # --- High-level convenience function ---
 
 def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps=3, n_refits=3,
-                       param_ranges=None, task_params=None, fixed_params=None, n_processes=None):
+                       param_ranges=None, task_params=None, blocks=None, fixed_params=None, n_processes=None):
     """
     Run a complete parameter recovery study.
 
@@ -416,6 +417,7 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
         n_refits (int)             - Fitting repetitions per subject-task-rep
         param_ranges (dict)        - {param_name: (min, max)}, uses PARAM_BOUNDS defaults if None
         task_params (dict)         - Task generation parameters
+        blocks (list)              - Optional block specifications for tasks
         fixed_params (dict)        - Fixed parameter values
         n_processes (int)          - Number of parallel processes
 
@@ -429,7 +431,7 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
 
     # Generate tasks
     print(f"Generating {n_subjects} x {n_tasks_per_subject} tasks...")
-    tasks = generate_tasks(n_subjects, n_tasks_per_subject, task_params)
+    tasks = generate_tasks(n_subjects, n_tasks_per_subject, task_params, blocks)
 
     # Simulate subjects with known parameters
     print(f"Simulating {n_subjects} x {n_tasks_per_subject} x {n_reps} subject behaviors...")
@@ -464,3 +466,29 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
             'param_ranges': param_ranges,
         }
     }
+
+
+def verify_block_recovery():
+    """
+    Verify parameter recovery with block-structured tasks.
+
+    Uses 4 blocks of 120 trials each with noise_sd alternating between 10 and 25.
+    Fits beta_cpp and beta_ru for 10 subjects.
+    """
+    blocks = [
+        {'ntrials': 120, 'noise_sd': 10},
+        {'ntrials': 120, 'noise_sd': 25},
+        {'ntrials': 120, 'noise_sd': 10},
+        {'ntrials': 120, 'noise_sd': 25},
+    ]
+
+    result = parameter_recovery(
+        param_names=['mix'],
+        n_subjects=10,
+        n_tasks_per_subject=5,
+        n_reps=5,
+        n_refits=1,
+        blocks=blocks,
+    )
+
+    return result

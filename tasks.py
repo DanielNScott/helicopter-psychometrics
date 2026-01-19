@@ -46,11 +46,36 @@ class ChangepointTask:
                 raise ValueError(f"Missing required parameter: {param}")
 
 
-def simulate_cpt(params=DEFAULT_PARAMS_CPT):
-    """Simulates a changepoint task using input parameters."""
+def simulate_cpt(params=None, blocks=None):
+    """
+    Simulate a changepoint task.
+
+    Parameters:
+        params (dict) - Task parameters (uses DEFAULT_PARAMS_CPT if None)
+        blocks (list) - Optional list of block specifications, each a dict with:
+                        'ntrials': number of trials in this block
+                        'noise_sd': noise SD for this block
+                        If provided, overrides params['ntrials'] and params['noise_sd']
+
+    Returns:
+        task (ChangepointTask) - Simulated task with observations and states
+    """
+    # Start from defaults, then update with provided params
+    task_params = DEFAULT_PARAMS_CPT.copy()
+    if params is not None:
+        task_params.update(params)
+
+    # If blocks provided, build ntrials and noise_sd from block specs
+    if blocks is not None:
+        ntrials = sum(b['ntrials'] for b in blocks)
+        noise_sd = np.concatenate([
+            np.full(b['ntrials'], b['noise_sd']) for b in blocks
+        ])
+        task_params['ntrials'] = ntrials
+        task_params['noise_sd'] = noise_sd
 
     # Initialize task container
-    task = ChangepointTask(params = params)
+    task = ChangepointTask(params=task_params)
 
     # Check that params included all fields necessary
     task.check_params()
@@ -78,7 +103,7 @@ def simulate_cpt(params=DEFAULT_PARAMS_CPT):
     # Set observations and save latent state for each trial
     snum = 0
     for i in range(task.ntrials):
-        
+
         # Set new block if noise_sd changes
         if i > 0:
             if task.noise_sd[i] != task.noise_sd[i-1]:
