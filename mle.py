@@ -9,6 +9,7 @@ Provides functions for:
 from configs import *
 from subjects import Subject, simulate_subject, get_beliefs, DEFAULT_PARAMS_SUBJ
 from tasks import simulate_cpt
+from analysis import fit_linear_models
 
 import scipy.optimize as opt
 from scipy.stats import norm
@@ -204,14 +205,73 @@ def get_param_guess(opt_param_names):
     return np.array(guesses)
 
 
-def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None):
+def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
+    """
+    Fit beta parameters for a single subject-task combination using OLS.
+
+    Uses the n0 model from analysis.fit_linear_models:
+        update = c + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
+
+    Parameters:
+        subj (Subject)        - Subject with responses and beliefs
+        opt_param_names (list)- Must be subset of ['beta_cpp', 'beta_ru']
+        fixed_params (dict)   - Fixed parameter values (unused, for interface compatibility)
+
+    Returns:
+        estimates (array) - Fitted parameter values in order of opt_param_names
+        sse (float)       - Sum of squared errors (1 - r_squared) * SS_total
+    """
+
+    # Mapping from simulation beta parameters to n0 model term names
+    beta_to_n0_term = {
+        'beta_cpp': 'cpp',
+        'beta_ru': 'prod',
+    }
+
+    # Validate that only supported beta parameters are being fit
+    valid_params = set(beta_to_n0_term.keys())
+    invalid = set(opt_param_names) - valid_params
+    if invalid:
+        raise ValueError(f"OLS fitting only supports {valid_params}. Invalid: {invalid}")
+
+    # Fit using analysis.fit_linear_models with n0 model
+    result_df = fit_linear_models([subj], model='n0')
+
+    # Extract requested parameters in order
+    estimates = []
+    for name in opt_param_names:
+        term = beta_to_n0_term[name]
+        estimates.append(result_df[f'n0_beta_{term}'].values[0])
+
+    # Compute SSE from variance explained
+    up = subj.responses.update
+    ss_total = np.sum((up - np.mean(up)) ** 2)
+    r_squared = result_df['n0_ve'].values[0]
+    sse = (1 - r_squared) * ss_total
+
+    return np.array(estimates), sse
+
+
+def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None, fit_method='mle'):
     """
     Fit parameters for a single subject-task combination.
 
+    Parameters:
+        subj (Subject)        - Subject with responses
+        task (ChangepointTask)- Task data
+        opt_param_names (list)- Names of parameters to fit
+        fixed_params (dict)   - Fixed parameter values
+        seed (int)            - Random seed for MLE initialization
+        fit_method (str)      - 'mle' for maximum likelihood, 'ols' for ordinary least squares
+
     Returns:
         estimates (array) - Fitted parameter values
-        nll (float)       - Final negative log-likelihood
+        score (float)     - Negative log-likelihood (MLE) or sum of squared errors (OLS)
     """
+    if fit_method == 'ols':
+        return fit_single_ols(subj, task, opt_param_names, fixed_params)
+
+    # MLE fitting
     if seed is not None:
         np.random.seed(seed)
 
@@ -233,10 +293,14 @@ def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None):
 # Global for worker initialization
 _worker_config = None
 
-def _init_worker(opt_param_names, fixed_params):
+def _init_worker(opt_param_names, fixed_params, fit_method):
     """Initialize worker process with shared configuration."""
     global _worker_config
-    _worker_config = {'opt_param_names': opt_param_names, 'fixed_params': fixed_params}
+    _worker_config = {
+        'opt_param_names': opt_param_names,
+        'fixed_params': fixed_params,
+        'fit_method': fit_method,
+    }
 
 
 def _worker_fit_job(args):
@@ -245,14 +309,20 @@ def _worker_fit_job(args):
     global _worker_config
 
     try:
-        estimates, nll = fit_single(subj, task, _worker_config['opt_param_names'],
-                                    _worker_config['fixed_params'], seed)
-        return {'success': True, 'estimates': estimates, 'nll': nll}
+        estimates, score = fit_single(
+            subj, task,
+            _worker_config['opt_param_names'],
+            _worker_config['fixed_params'],
+            seed,
+            _worker_config['fit_method'],
+        )
+        return {'success': True, 'estimates': estimates, 'score': score}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
 
-def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=None, fixed_params=None):
+def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=None,
+                   fixed_params=None, fit_method='mle'):
     """
     Fit parameters for multiple subjects with multiprocessing.
 
@@ -263,13 +333,21 @@ def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=Non
         n_refits (int)        - Number of fitting repetitions per subject-task-rep
         n_processes (int)     - Number of parallel processes
         fixed_params (dict)   - Parameters held fixed during optimization
+        fit_method (str)      - 'mle' for maximum likelihood, 'ols' for ordinary least squares
 
     Returns:
         results (dict) with:
-            'ests' (ndarray) - Shape [n_subj, n_tasks, n_reps, n_refits, n_params]
-            'nlls' (ndarray) - Shape [n_subj, n_tasks, n_reps, n_refits]
+            'ests' (ndarray)    - Shape [n_subj, n_tasks, n_reps, n_refits, n_params]
+            'scores' (ndarray)  - Shape [n_subj, n_tasks, n_reps, n_refits] (NLL or SSE)
             'param_names' (list)
+            'fit_method' (str)
     """
+    # For OLS, n_refits is forced to 1 since the solution is deterministic
+    if fit_method == 'ols':
+        if n_refits != 1:
+            print(f"OLS fitting is deterministic; setting n_refits=1 (was {n_refits})")
+            n_refits = 1
+
     n_subj = len(subjects)
     n_tasks = len(subjects[0])
     n_reps = len(subjects[0][0])
@@ -277,7 +355,7 @@ def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=Non
 
     # Pre-allocate results arrays
     ests = np.full((n_subj, n_tasks, n_reps, n_refits, n_params), np.nan)
-    nlls = np.full((n_subj, n_tasks, n_reps, n_refits), np.nan)
+    scores = np.full((n_subj, n_tasks, n_reps, n_refits), np.nan)
 
     # Build job list
     jobs = []
@@ -296,7 +374,7 @@ def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=Non
 
     print(f"Fitting {len(jobs)} jobs with {n_processes} processes...")
     with mp.Pool(processes=n_processes, initializer=_init_worker,
-                 initargs=(opt_param_names, fixed_params)) as pool:
+                 initargs=(opt_param_names, fixed_params, fit_method)) as pool:
         results_list = pool.map(_worker_fit_job, jobs)
 
     # Collect results
@@ -304,14 +382,14 @@ def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=Non
     for result, (s, t, r, f) in zip(results_list, job_map):
         if result['success']:
             ests[s, t, r, f, :] = result['estimates']
-            nlls[s, t, r, f] = result['nll']
+            scores[s, t, r, f] = result['score']
             n_success += 1
         else:
             print(f"Fit failed for subject {s}, task {t}, rep {r}, refit {f}: {result['error']}")
 
     print(f"Completed {n_success}/{len(jobs)} fits successfully")
 
-    return {'ests': ests, 'nlls': nlls, 'param_names': opt_param_names}
+    return {'ests': ests, 'scores': scores, 'param_names': opt_param_names, 'fit_method': fit_method}
 
 
 # --- Analysis functions ---
@@ -405,7 +483,8 @@ def analyze_recovery(true_params, results):
 # --- High-level convenience function ---
 
 def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps=3, n_refits=3,
-                       param_ranges=None, task_params=None, blocks=None, fixed_params=None, n_processes=None):
+                       param_ranges=None, task_params=None, blocks=None, fixed_params=None,
+                       n_processes=None, fit_method='mle'):
     """
     Run a complete parameter recovery study.
 
@@ -420,6 +499,7 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
         blocks (list)              - Optional block specifications for tasks
         fixed_params (dict)        - Fixed parameter values
         n_processes (int)          - Number of parallel processes
+        fit_method (str)           - 'mle' for maximum likelihood, 'ols' for ordinary least squares
 
     Returns:
         dict with 'true_params', 'results', 'analysis', 'config'
@@ -439,8 +519,8 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
 
     # Fit parameters
     n_fits = n_subjects * n_tasks_per_subject * n_reps * n_refits
-    print(f"Fitting parameters {param_names} ({n_fits} total fits)...")
-    results = fit_parameters(subjects, tasks, param_names, n_refits, n_processes, fixed_params)
+    print(f"Fitting parameters {param_names} ({n_fits} total fits, method={fit_method})...")
+    results = fit_parameters(subjects, tasks, param_names, n_refits, n_processes, fixed_params, fit_method)
 
     # Analyze recovery
     analysis = analyze_recovery(true_params, results)
@@ -464,6 +544,7 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
             'n_reps': n_reps,
             'n_refits': n_refits,
             'param_ranges': param_ranges,
+            'fit_method': fit_method,
         }
     }
 
@@ -473,7 +554,7 @@ def verify_block_recovery():
     Verify parameter recovery with block-structured tasks.
 
     Uses 4 blocks of 120 trials each with noise_sd alternating between 10 and 25.
-    Fits beta_cpp and beta_ru for 10 subjects.
+    Fits mix parameter for 10 subjects using MLE.
     """
     blocks = [
         {'ntrials': 120, 'noise_sd': 10},
@@ -489,6 +570,33 @@ def verify_block_recovery():
         n_reps=5,
         n_refits=1,
         blocks=blocks,
+    )
+
+    return result
+
+
+def verify_ols_recovery():
+    """
+    Verify OLS recovery of beta_cpp with block-structured tasks.
+
+    Uses 4 blocks of 120 trials each with noise_sd alternating between 10 and 25.
+    Fits beta_cpp for 10 subjects using OLS.
+    """
+    blocks = [
+        {'ntrials': 120, 'noise_sd': 10},
+        {'ntrials': 120, 'noise_sd': 25},
+        {'ntrials': 120, 'noise_sd': 10},
+        {'ntrials': 120, 'noise_sd': 25},
+    ]
+
+    result = parameter_recovery(
+        param_names=['beta_cpp'],
+        n_subjects=10,
+        n_tasks_per_subject=5,
+        n_reps=5,
+        n_refits=1,
+        blocks=blocks,
+        fit_method='ols',
     )
 
     return result
