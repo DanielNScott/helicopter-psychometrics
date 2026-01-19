@@ -8,19 +8,6 @@ from svgtools import *
 
 import os
 
-
-# Default normative model parameters
-NORMATIVE_PARAMS = {
-    'init_state_est': 150,      # Initial state estimate (middle of range)
-    'init_runlen_est': 1,       # Initial run length estimate
-    'noise_sd': 25.0,           # Observation noise SD (from task)
-    'hazard': 0.1,              # Hazard rate (from task)
-    'drift': 0.0,               # No drift in normative model
-    'noise_sd_update': 0.0,     # No update noise in normative model
-    'limit_updates': False,     # Don't limit updates
-    'clip': True,               # Clip final runlen
-}
-
 def figure_1(subjs, tasks, subj_pcp_lr, subj_pca_scores, savefig=True, close=True):
     """Generate Figure 1: Task explanation and example adaptive vs non-adaptive subjects.
 
@@ -118,7 +105,7 @@ def figure_2(tasks, subj_pcp_lr, group_pca_basis, subj_pca_lr_scores, subj_linea
 
     # Simulate normative model on first task
     sim = Subject()
-    params = NORMATIVE_PARAMS.copy()
+    params = DEFAULT_PARAMS_SUBJ.copy()
     params['noise_sd'] = tasks[0].noise_sd[0]
     params['hazard'] = tasks[0].hazard[0]
     simulate_subject(sim, tasks[0].obs, params)
@@ -241,13 +228,13 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
     # --- Panel A: PE vs Update comparison (normative vs PE-only) ---
     # Simulate normative and PE-only models on first task
     sim_norm = Subject()
-    params_norm = NORMATIVE_PARAMS.copy()
+    params_norm = DEFAULT_PARAMS_SUBJ.copy()
     params_norm['noise_sd'] = tasks[0].noise_sd[0]
     params_norm['hazard'] = tasks[0].hazard[0]
     simulate_subject(sim_norm, tasks[0].obs, params_norm)
 
     sim_pe = Subject()
-    params_pe = NORMATIVE_PARAMS.copy()
+    params_pe = DEFAULT_PARAMS_SUBJ.copy()
     params_pe['noise_sd'] = tasks[0].noise_sd[0]
     params_pe['hazard'] = 0.0  # No changepoint detection
     simulate_subject(sim_pe, tasks[0].obs, params_pe)

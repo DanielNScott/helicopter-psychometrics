@@ -1,5 +1,23 @@
 from configs import *
 
+DEFAULT_PARAMS_SUBJ = {
+    'mix':       1.0,
+    'beta_pe':   0.0,
+    'beta_cpp':  1.0,
+    'beta_ru':   1.0,
+    'hazard':    0.1,
+    'noise_sd': 10.0,
+    'loc':       0.0,
+    'unc':       1.0,
+    'drift':     0.0,
+    'init_state_est': 150.0,
+    'init_runlen_est': 10.0,
+    'noise_sd_update': 0.0,
+    'limit_updates': True,
+    'clip': True
+}
+
+
 class Responses:
     """Container for subject responses, prediction errors, updates, and learning rates."""
     def __init__(self, n_trials):
@@ -26,8 +44,12 @@ class Subject:
         self.responses = responses
 
 
-def subject_from_experiment(pred, pe, update, obs, new_blk, hazard, noise_sd):
+def subject_from_experiment(pred, pe, update, obs, new_blk, hazard, noise_sd, params=None):
     """Create a Subject instance from imported experimental data."""
+    # Use default params if not provided
+    if params is None:
+        params = DEFAULT_PARAMS_SUBJ
+
     # Initialize subject
     subj = Subject()
 
@@ -35,13 +57,13 @@ def subject_from_experiment(pred, pe, update, obs, new_blk, hazard, noise_sd):
     subj.responses = set_responses(pred, pe, update)
 
     # Infer beliefs
-    subj.beliefs = get_beliefs(subj.responses, obs, new_blk, hazard, noise_sd)
+    subj.beliefs = get_beliefs(subj.responses, obs, new_blk, hazard, noise_sd, params=params)
 
     return subj
 
 
 # Method for simulating a subject's responses
-def simulate_subject(subj, obs, params):
+def simulate_subject(subj, obs, params=DEFAULT_PARAMS_SUBJ):
     """Performs approximate Bayesian latent state inference for the change-point task."""
     n_trials = len(obs)
 
@@ -69,52 +91,59 @@ def simulate_subject(subj, obs, params):
         hazard = np.full(n_trials, hazard)
 
     # Loop through the observations, making sequential predictions
-    for i in range(n_trials):
+    for t in range(n_trials):
         # Part 1: get the expected distribution of observations
 
         # Latent state uncertainty without drift
-        static_var = noise_var[i] / beliefs.runlen[i]
+        static_var = noise_var[t] / beliefs.runlen[t]
 
         # Latent state uncertainty considering drift
-        beliefs.state_sd[i] = np.sqrt(static_var + params['drift'])
+        beliefs.state_sd[t] = np.sqrt(static_var + params['drift'])
 
         # Updated belief in how long runs should last
-        beliefs.runlen[i] = noise_var[i] / beliefs.state_sd[i]**2
+        beliefs.runlen[t] = noise_var[t] / beliefs.state_sd[t]**2
 
         # Uncertainty on the next observation
-        beliefs.obs_sd[i] = np.sqrt(noise_var[i] + beliefs.state_sd[i]**2)
+        beliefs.obs_sd[t] = np.sqrt(noise_var[t] + beliefs.state_sd[t]**2)
 
         # Part 2: calculate probability of latent state change
-        beliefs.cpp[i] = get_cpp(obs[i], responses.pred[i], beliefs.obs_sd[i], bnds, hazard[i])
+        beliefs.cpp[t] = get_cpp(obs[t], responses.pred[t], beliefs.obs_sd[t], bnds, hazard[t], mix=params['mix'])
 
         # Part 3: Update belief about mean
 
         # Now run_len_est can be really small if there is a big drift...
-        beliefs.relunc[i] = 1 / (beliefs.runlen[i] + 1)
+        beliefs.relunc[t] = 1 / (beliefs.runlen[t] + 1)
 
         # Find learning rate
-        responses.lr[i] = get_learning_rate(beliefs, i)
+        responses.lr[t] = get_learning_rate(
+            beliefs, 
+            t,
+            bpe  = params['beta_pe'],
+            bcpp = params['beta_cpp'],
+            bru  = params['beta_ru'],
+            clip = params['clip'],
+            noise_sd = params['noise_sd_update']
+        )
 
         # Set state prediction error
-        responses.pe[i] = obs[i] - responses.pred[i]
+        responses.pe[t] = obs[t] - responses.pred[t]
 
         # Update state estimate
         noise_update = np.random.normal(0, params['noise_sd_update'])
-        responses.update[i] = responses.lr[i] * responses.pe[i] + noise_update
-        responses.pred[i + 1] = responses.pred[i] + responses.update[i]
+        responses.update[t] = responses.lr[t] * responses.pe[t] + noise_update
+        responses.pred[t + 1] = responses.pred[t] + responses.update[t]
 
         # Apply limits if task has them
         if params['limit_updates']:
-            min_pred = min(responses.pred[i], obs[i])
-            max_pred = max(responses.pred[i], obs[i])
-            responses.pred[i + 1] = np.clip(responses.pred[i + 1], min_pred, max_pred)
+            min_pred = min(responses.pred[t], obs[t])
+            max_pred = max(responses.pred[t], obs[t])
+            responses.pred[t + 1] = np.clip(responses.pred[t + 1], min_pred, max_pred)
 
         # Part 4: Update run length
-        beliefs.runlen[i + 1] = get_runlen(obs[i], responses.pred[i], responses.pe[i], beliefs.cpp[i], beliefs.relunc[i], beliefs.runlen[i], noise_var[i])
+        beliefs.runlen[t + 1] = get_runlen(obs[t], responses.pred[t], responses.pe[t], beliefs.cpp[t], beliefs.relunc[t], beliefs.runlen[t], noise_var[t])
 
     # Lots of calcs are easier without the final runlen/relunc number
-    if params['clip']:
-        beliefs.runlen = beliefs.runlen[:-1]
+    beliefs.runlen = beliefs.runlen[:-1]
 
     # Save beliefs and responses to subject
     subj.beliefs   = beliefs
@@ -151,9 +180,13 @@ def set_responses(pred, pe, update):
 
 
 # Method for inferring beliefs from real subject data
-def get_beliefs(responses, obs, new_blk, hazard, noise_sd, init_ru=0.1, ud=1.0, bnds=[0,300]):
+def get_beliefs(responses, obs, new_blk, hazard, noise_sd, params=None, init_ru=0.1, ud=1.0, bnds=[0,300]):
     """Returns inferred subjective quantities from combination of observable subject data and task information."""
     ntrials = len(obs)
+
+    # Use default params if not provided
+    if params is None:
+        params = DEFAULT_PARAMS_SUBJ
 
     # Initialize subject beliefs
     beliefs = Beliefs(ntrials)
@@ -163,22 +196,29 @@ def get_beliefs(responses, obs, new_blk, hazard, noise_sd, init_ru=0.1, ud=1.0, 
         hazard = np.full(ntrials, hazard)
 
     # Compute both CPP and relative uncertainty according to subject prediction errors
-    for i in range(ntrials):
+    for t in range(ntrials):
 
         # Reset relative uncertainty at new blocks
-        if new_blk[i]:
-            beliefs.relunc[i] = init_ru
+        if new_blk[t]:
+            beliefs.relunc[t] = init_ru
         else:
-            beliefs.relunc[i] = get_relunc(beliefs.relunc[i-1], responses.pe[i-1], beliefs.cpp[i-1], noise_sd[i], ud)
+            beliefs.relunc[t] = get_relunc(beliefs.relunc[t-1], responses.pe[t-1], beliefs.cpp[t-1], noise_sd[t], ud)
 
         # Compute total uncertainty
-        tot_unc = (noise_sd[i] ** 2) / (1 - beliefs.relunc[i])
+        tot_unc = (noise_sd[t] ** 2) / (1 - beliefs.relunc[t])
 
         # Compute error based CPP for subject data
-        beliefs.cpp[i] = get_cpp(obs[i], responses.pred[i], np.sqrt(tot_unc), bnds, hazard[i])
+        beliefs.cpp[t] = get_cpp(obs[t], responses.pred[t], np.sqrt(tot_unc), bnds, hazard[t], mix=params['mix'])
 
         # Compute learning rate predicted
-        beliefs.model_lr[i] = get_learning_rate(beliefs, i, bpe=0.0, bcpp=1.0, bru=1.0, lb=0.0, ub=1.0, noise_sd=0.0)
+        beliefs.model_lr[t] = get_learning_rate(
+            beliefs, t,
+            bpe=params['beta_pe'],
+            bcpp=params['beta_cpp'],
+            bru=params['beta_ru'],
+            clip=params['clip'],
+            noise_sd=params['noise_sd_update']
+        )
 
     # Compute the update we would predict from these beliefs
     beliefs.model_up = beliefs.model_lr * responses.pe
@@ -190,13 +230,13 @@ def get_beliefs(responses, obs, new_blk, hazard, noise_sd, init_ru=0.1, ud=1.0, 
     return beliefs
 
 
-def get_learning_rate(beliefs, i, bpe = 1.0, bcpp=1.0, bru=1.0, lb=0.0, ub=1.0, noise_sd=0.0):
+def get_learning_rate(beliefs, t, bpe = 1.0, bcpp=1.0, bru=1.0, clip=False, noise_sd=0.0):
     """Computes learning rate. This is shared between simulation and inference."""
     # Learning rate as weighted sum
-    lr = bpe + bcpp*beliefs.cpp[i] + bru*beliefs.relunc[i]*(1-beliefs.cpp[i])
+    lr = bpe + bcpp*beliefs.cpp[t] + bru*beliefs.relunc[t]*(1-beliefs.cpp[t])
         
     # Limit learning rate to [0,1] if specified
-    lr = np.clip(lr,lb,ub)
+    lr = np.clip(lr, 0.0, 1.0) if clip else lr
 
     # Add learning rate noise, but don't flip sign
     proposal = lr + np.random.normal(0, noise_sd)
@@ -281,7 +321,7 @@ def ratio_to_prob(ratio):
     """Convert a likelihood ratio to a probability."""
     return ratio / (1 + ratio)
 
-def sigmoid(pe, obs_sd=25, hazard=0.1, lp=0, up=1, N=300, loc=0, unc=1, mix=1, la=0, ua=1, debug=False):
+def get_cpp_sigmoid(pe, obs_sd=25, hazard=0.1, lp=0, up=1, N=300, loc=0, unc=1, mix=1, la=0, ua=1, debug=False):
     """
     Direct parameterization of the sigmoid function determining CPP.
 
@@ -329,12 +369,3 @@ def sigmoid(pe, obs_sd=25, hazard=0.1, lp=0, up=1, N=300, loc=0, unc=1, mix=1, l
 
     # Parameterize the asymptotes
     return la + (ua - la) * sigmoid
-
-# def cpp_model_linear(mix):
-#     # Linearly interpolate between Bayes and constant hazard ratio
-#     cpp_est_prior = ratio_to_prob(hr)
-#     return mix * cpp_opt + (1 - mix) * cpp_est_prior
-
-# def cpp_model_sigmoid():
-#     # CPP is a logistic-like function
-#     return sigmoid(obs - pred, obs_sd, hazard, cdf_min, cdf_max, 300, params['loc'], params['unc'], params['mix'], params['lower_prob'], params['upper_prob'])

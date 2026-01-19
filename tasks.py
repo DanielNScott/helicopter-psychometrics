@@ -1,5 +1,13 @@
 import numpy as np
 
+DEFAULT_PARAMS_CPT = {
+    'ntrials':  120,
+    'noise_sd': 10.0,
+    'hazard':   0.1,
+    'bnds_ls':  [25, 275],
+    'bnds_obs': [0 , 300],
+}
+
 class ChangepointTask:
     def __init__(self, params=None, state=None):
         """Container for changepoint task data."""
@@ -38,7 +46,7 @@ class ChangepointTask:
                 raise ValueError(f"Missing required parameter: {param}")
 
 
-def simulate_cpt(params):
+def simulate_cpt(params=DEFAULT_PARAMS_CPT):
     """Simulates a changepoint task using input parameters."""
 
     # Initialize task container
