@@ -230,7 +230,7 @@ def get_beliefs(responses, obs, new_blk, hazard, noise_sd, params=None, init_ru=
     return beliefs
 
 
-def get_learning_rate(beliefs, t, bpe = 1.0, bcpp=1.0, bru=1.0, clip=False, noise_sd=0.0):
+def get_learning_rate(beliefs, t, bpe = 0.0, bcpp=1.0, bru=1.0, clip=False, noise_sd=0.0):
     """Computes learning rate. This is shared between simulation and inference."""
     # Learning rate as weighted sum
     lr = bpe + bcpp*beliefs.cpp[t] + bru*beliefs.relunc[t]*(1-beliefs.cpp[t])
