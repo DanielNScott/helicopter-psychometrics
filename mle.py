@@ -16,22 +16,37 @@ from scipy.stats import norm
 from copy import deepcopy
 import multiprocessing as mp
 
-# Parameter bounds for optimization
+import pickle
+import time
+import os
+
+RESULTS_DIR = './data/'
+
+# Parameter bounds for optimization (defaults populated from DEFAULT_PARAMS_SUBJ)
+_BOUNDS_SPEC = {
+    'beta_pe':         {'lb': 0.0,   'ub': 0.8},
+    'beta_cpp':        {'lb': 0.0,   'ub': 1.0},
+    'beta_ru':         {'lb': 0.0,   'ub': 1.0},
+    'mix':             {'lb': 0.01,  'ub': 1.0},
+    'hazard':          {'lb': 0.02,  'ub': 0.8},
+    'noise_sd':        {'lb': 5.0,   'ub': 50.0},
+    'loc':             {'lb': -40.0, 'ub': 40.0},
+    'unc':             {'lb': 0.1,   'ub': 5.0},
+    'drift':           {'lb': 0.0,   'ub': 10.0},
+    'init_state_est':  {'lb': 0.0,   'ub': 300.0},
+    'init_runlen_est': {'lb': 0.01,  'ub': 50.0},
+    'noise_sd_update': {'lb': 0.0,   'ub': 10.0},
+    'noise_sd_lr':     {'lb': 0.0,   'ub': 0.2},
+    'init_relunc':     {'lb': 0.01,  'ub': 0.5},
+    'ud':              {'lb': 0.1,   'ub': 10.0},
+    'limit_updates':   {'lb': False, 'ub': True},
+    'clip':            {'lb': False, 'ub': True},
+}
+
+# Build PARAM_BOUNDS with defaults from DEFAULT_PARAMS_SUBJ
 PARAM_BOUNDS = {
-    'beta_pe':         {'default': 0.0,   'lb': 0.0,   'ub': 0.8},
-    'beta_cpp':        {'default': 1.0,   'lb': 0.0,   'ub': 1.0},
-    'beta_ru':         {'default': 1.0,   'lb': 0.0,   'ub': 1.0},
-    'mix':             {'default': 1.0,   'lb': 0.01,  'ub': 1.0},
-    'hazard':          {'default': 0.1,   'lb': 0.02,  'ub': 0.8},
-    'noise_sd':        {'default': 10.0,  'lb': 5.0,   'ub': 50.0},
-    'loc':             {'default': 0.0,   'lb': -40.0, 'ub': 40.0},
-    'unc':             {'default': 1.0,   'lb': 0.1,   'ub': 5.0},
-    'drift':           {'default': 0.0,   'lb': 0.0,   'ub': 10.0},
-    'init_state_est':  {'default': 150.0, 'lb': 0.0,   'ub': 300.0},
-    'init_runlen_est': {'default': 0.1,   'lb': 0.1,   'ub': 50.0},
-    'noise_sd_update': {'default': 2.0,   'lb': 0.0,   'ub': 10.0},
-    'limit_updates':   {'default': True,  'lb': False, 'ub': True},
-    'clip':            {'default': True,  'lb': False, 'ub': True},
+    name: {'default': DEFAULT_PARAMS_SUBJ[name], **bounds}
+    for name, bounds in _BOUNDS_SPEC.items()
 }
 
 # Validate that PARAM_BOUNDS covers all subject parameters
@@ -212,8 +227,12 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     Uses the n0 model from analysis.fit_linear_models:
         update = c + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
 
+    Beliefs (cpp, ru) are re-inferred using default parameters, matching
+    how real subject data would be processed.
+
     Parameters:
-        subj (Subject)        - Subject with responses and beliefs
+        subj (Subject)        - Subject with responses
+        task (ChangepointTask)- Task data (for noise_sd, hazard, new_blk)
         opt_param_names (list)- Must be subset of ['beta_cpp', 'beta_ru']
         fixed_params (dict)   - Fixed parameter values (unused, for interface compatibility)
 
@@ -233,6 +252,10 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     invalid = set(opt_param_names) - valid_params
     if invalid:
         raise ValueError(f"OLS fitting only supports {valid_params}. Invalid: {invalid}")
+
+    # Re-infer beliefs using default parameters (as we would for real data)
+    noise_sd = task.noise_sd if not np.isscalar(task.noise_sd) else np.full(len(task.obs), task.noise_sd)
+    subj.beliefs = get_beliefs(subj.responses, task.obs, task.new_blk, task.hazard, noise_sd)
 
     # Fit using analysis.fit_linear_models with n0 model
     result_df = fit_linear_models([subj], model='n0')
@@ -502,7 +525,7 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
         fit_method (str)           - 'mle' for maximum likelihood, 'ols' for ordinary least squares
 
     Returns:
-        dict with 'true_params', 'results', 'analysis', 'config'
+        dict with 'true_params', 'results', 'analysis', 'config', 'subjects', 'tasks'
     """
     # Default parameter ranges from PARAM_BOUNDS
     if param_ranges is None:
@@ -537,6 +560,8 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
         'true_params': true_params,
         'results': results,
         'analysis': analysis,
+        'subjects': subjects,
+        'tasks': tasks,
         'config': {
             'param_names': param_names,
             'n_subjects': n_subjects,
@@ -575,12 +600,12 @@ def verify_block_recovery():
     return result
 
 
-def verify_ols_recovery():
+def verify_ols_recovery(params=['beta_cpp', 'beta_ru'], n_subjects=100, n_tasks_per_subject=5, n_reps=5):
     """
     Verify OLS recovery of beta_cpp with block-structured tasks.
 
     Uses 4 blocks of 120 trials each with noise_sd alternating between 10 and 25.
-    Fits beta_cpp for 10 subjects using OLS.
+    Fits beta_cpp for 30 subjects using OLS.
     """
     blocks = [
         {'ntrials': 120, 'noise_sd': 10},
@@ -590,13 +615,59 @@ def verify_ols_recovery():
     ]
 
     result = parameter_recovery(
-        param_names=['beta_cpp'],
-        n_subjects=10,
-        n_tasks_per_subject=5,
-        n_reps=5,
+        param_names=params,
+        n_subjects=n_subjects,
+        n_tasks_per_subject=n_tasks_per_subject,
+        n_reps=n_reps,
         n_refits=1,
         blocks=blocks,
         fit_method='ols',
     )
 
+    return result
+
+def save_recovery(result, filename='recovery'):
+    """Save parameter recovery result to timestamped pickle file.
+
+    Parameters:
+        result (dict) - Output from parameter_recovery
+        filename (str) - Base filename (without extension)
+
+    Returns:
+        filepath (str) - Full path to saved file
+    """
+    if not os.path.exists(RESULTS_DIR):
+        os.makedirs(RESULTS_DIR)
+
+    datestring = time.strftime("%Y-%m-%d-%H-%M-%S")
+    filepath = f"{RESULTS_DIR}{filename}_{datestring}.pkl"
+
+    with open(filepath, 'wb') as f:
+        pickle.dump(result, f)
+
+    print(f"Saved recovery results to {filepath}")
+    return filepath
+
+
+def load_recovery(filename='recovery'):
+    """Load most recent parameter recovery result from pickle file.
+
+    Parameters:
+        filename (str) - Base filename (without extension)
+
+    Returns:
+        result (dict) - Loaded parameter recovery result
+    """
+    file_list = [f for f in os.listdir(RESULTS_DIR) if f.startswith(f"{filename}_") and f.endswith('.pkl')]
+
+    if not file_list:
+        raise FileNotFoundError(f"No recovery files found matching '{filename}_*.pkl' in {RESULTS_DIR}")
+
+    latest_file = max(file_list, key=lambda x: os.path.getctime(os.path.join(RESULTS_DIR, x)))
+    filepath = os.path.join(RESULTS_DIR, latest_file)
+
+    with open(filepath, 'rb') as f:
+        result = pickle.load(f)
+
+    print(f"Loaded recovery results from {filepath}")
     return result
