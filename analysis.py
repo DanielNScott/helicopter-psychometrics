@@ -230,3 +230,21 @@ def get_subj_pca_ve(subj_pcp_lr, group_pca_basis, subj_pca_scores):
             ve_data[i, n_pcs - 1] = 1 - ss_residual / ss_total if ss_total > 0 else 0
 
     return pd.DataFrame(ve_data, columns=['ve_pc1', 've_pc1_pc2', 've_pc1_pc2_pc3'])
+
+
+def get_lm_cumulative_ve(subjs):
+    """Compute cumulative variance explained by nested linear models.
+
+    Fits models m0 (pe), m1 (pe+cpp), m2 (pe+cpp+ru) and returns mean VE across subjects.
+
+    Returns:
+        array of length 3 with mean VE for each model level.
+    """
+    models = ['m0', 'm1', 'm2']
+    cumulative_ve = np.zeros(len(models))
+
+    for i, model in enumerate(models):
+        lm_results = fit_linear_models(subjs, model=model)
+        cumulative_ve[i] = lm_results[f'{model}_ve'].mean()
+
+    return cumulative_ve
