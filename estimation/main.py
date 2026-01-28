@@ -16,7 +16,6 @@ def recovery_analysis(use_cache=USE_CACHE):
     if use_cache:
         try:
             results = load_recovery('n0_recovery')
-            return results
         except FileNotFoundError:
             print("No cached recovery results found; running new recovery.")
             use_cache = False
@@ -31,8 +30,8 @@ def recovery_analysis(use_cache=USE_CACHE):
         ]
 
         results = parameter_recovery(
-            param_names=['beta_cpp', 'beta_ru'],
-            n_subjects=100,
+            param_names=['beta_pe', 'beta_cpp', 'beta_ru'],
+            n_subjects=400,
             n_tasks_per_subject=5,
             n_reps=5,
             n_refits=1,

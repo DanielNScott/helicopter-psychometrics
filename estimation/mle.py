@@ -9,6 +9,7 @@ Provides functions for:
 from configs import *
 from changepoint.subjects import Subject, simulate_subject, get_beliefs, DEFAULT_PARAMS_SUBJ
 from changepoint.tasks import simulate_cpt
+from changepoint.multiproc import generate_tasks_parallel, simulate_subjects_parallel
 from analysis.analysis import fit_linear_models
 
 import scipy.optimize as opt
@@ -80,6 +81,10 @@ def simulate_subjects(param_ranges, tasks, n_reps=1, fixed_params=None):
         true_params[param_name] = np.random.uniform(lb, ub, n_subjects)
 
     # Simulate each subject on each task, multiple times
+    n_sims = n_subjects * n_tasks * n_reps
+    report_interval = max(1, n_sims // 20)
+    sim_count = 0
+
     subjects = []
     for s in range(n_subjects):
 
@@ -106,6 +111,10 @@ def simulate_subjects(param_ranges, tasks, n_reps=1, fixed_params=None):
                 subj = Subject()
                 subj = simulate_subject(subj, task.obs, task_params)
                 subj_reps.append(subj)
+
+                sim_count += 1
+                if sim_count % report_interval == 0 or sim_count == n_sims:
+                    print(f"  Progress: {sim_count}/{n_sims} simulations completed ({100*sim_count/n_sims:.0f}%)")
 
             subj_tasks.append(subj_reps)
         subjects.append(subj_tasks)
@@ -224,8 +233,7 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     """
     Fit beta parameters for a single subject-task combination using OLS.
 
-    Uses the n0 model from analysis.fit_linear_models:
-        update = c + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
+    Fits the model: update = c + beta_pe*pe + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
 
     Beliefs (cpp, ru) are re-inferred using default parameters, matching
     how real subject data would be processed.
@@ -233,22 +241,17 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     Parameters:
         subj (Subject)        - Subject with responses
         task (ChangepointTask)- Task data (for noise_sd, hazard, new_blk)
-        opt_param_names (list)- Must be subset of ['beta_cpp', 'beta_ru']
+        opt_param_names (list)- Subset of ['beta_pe', 'beta_cpp', 'beta_ru']
         fixed_params (dict)   - Fixed parameter values (unused, for interface compatibility)
 
     Returns:
         estimates (array) - Fitted parameter values in order of opt_param_names
-        sse (float)       - Sum of squared errors (1 - r_squared) * SS_total
+        sse (float)       - Sum of squared errors
     """
+    import statsmodels.api as sm
 
-    # Mapping from simulation beta parameters to n0 model term names
-    beta_to_n0_term = {
-        'beta_cpp': 'cpp',
-        'beta_ru': 'prod',
-    }
-
-    # Validate that only supported beta parameters are being fit
-    valid_params = set(beta_to_n0_term.keys())
+    # Validate parameters
+    valid_params = {'beta_pe', 'beta_cpp', 'beta_ru'}
     invalid = set(opt_param_names) - valid_params
     if invalid:
         raise ValueError(f"OLS fitting only supports {valid_params}. Invalid: {invalid}")
@@ -257,20 +260,31 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     noise_sd = task.noise_sd if not np.isscalar(task.noise_sd) else np.full(len(task.obs), task.noise_sd)
     subj.beliefs = get_beliefs(subj.responses, task.obs, task.new_blk, task.hazard, noise_sd)
 
-    # Fit using analysis.fit_linear_models with n0 model
-    result_df = fit_linear_models([subj], model='n0')
+    # Build design matrix for full model: update = c + beta_pe*pe + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
+    pe = subj.responses.pe
+    up = subj.responses.update
+    cpp = subj.beliefs.cpp
+    ru = subj.beliefs.relunc
+
+    const = np.ones(len(pe))
+    X_pe = pe
+    X_cpp = pe * cpp
+    X_ru = pe * ru * (1 - cpp)
+
+    design = np.column_stack([const, X_pe, X_cpp, X_ru])
+    term_names = ['c', 'beta_pe', 'beta_cpp', 'beta_ru']
+
+    # Fit model
+    results = sm.OLS(up, design).fit()
 
     # Extract requested parameters in order
     estimates = []
     for name in opt_param_names:
-        term = beta_to_n0_term[name]
-        estimates.append(result_df[f'n0_beta_{term}'].values[0])
+        idx = term_names.index(name)
+        estimates.append(results.params[idx])
 
-    # Compute SSE from variance explained
-    up = subj.responses.update
-    ss_total = np.sum((up - np.mean(up)) ** 2)
-    r_squared = result_df['n0_ve'].values[0]
-    sse = (1 - r_squared) * ss_total
+    # Compute SSE
+    sse = results.ssr
 
     return np.array(estimates), sse
 
@@ -328,7 +342,7 @@ def _init_worker(opt_param_names, fixed_params, fit_method):
 
 def _worker_fit_job(args):
     """Worker function for parallel fitting."""
-    subj, task, seed = args
+    job_idx, subj, task, seed = args
     global _worker_config
 
     try:
@@ -339,9 +353,9 @@ def _worker_fit_job(args):
             seed,
             _worker_config['fit_method'],
         )
-        return {'success': True, 'estimates': estimates, 'score': score}
+        return {'success': True, 'estimates': estimates, 'score': score, 'idx': job_idx}
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {'success': False, 'error': str(e), 'idx': job_idx}
 
 
 def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=None,
@@ -380,25 +394,36 @@ def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=Non
     ests = np.full((n_subj, n_tasks, n_reps, n_refits, n_params), np.nan)
     scores = np.full((n_subj, n_tasks, n_reps, n_refits), np.nan)
 
-    # Build job list
+    # Build job list with index for tracking
     jobs = []
     job_map = []
     for s in range(n_subj):
         for t in range(n_tasks):
             for r in range(n_reps):
                 for f in range(n_refits):
+                    job_idx = len(jobs)
                     seed = hash((s, t, r, f)) % (2**32)
-                    jobs.append((deepcopy(subjects[s][t][r]), deepcopy(tasks[s][t]), seed))
+                    jobs.append((job_idx, deepcopy(subjects[s][t][r]), deepcopy(tasks[s][t]), seed))
                     job_map.append((s, t, r, f))
 
     # Run jobs in parallel
     if n_processes is None:
         n_processes = max(1, mp.cpu_count() - 1)
 
-    print(f"Fitting {len(jobs)} jobs with {n_processes} processes...")
+    n_jobs = len(jobs)
+    print(f"Fitting {n_jobs} jobs with {n_processes} processes...")
+
+    # Use imap_unordered for progress reporting
+    results_list = [None] * n_jobs
+    report_interval = max(1, n_jobs // 20)  # Report ~20 times
+
     with mp.Pool(processes=n_processes, initializer=_init_worker,
                  initargs=(opt_param_names, fixed_params, fit_method)) as pool:
-        results_list = pool.map(_worker_fit_job, jobs)
+
+        for i, result in enumerate(pool.imap_unordered(_worker_fit_job, jobs)):
+            results_list[result['idx']] = result
+            if (i + 1) % report_interval == 0 or i == n_jobs - 1:
+                print(f"  Progress: {i + 1}/{n_jobs} fits completed ({100*(i+1)/n_jobs:.0f}%)")
 
     # Collect results
     n_success = 0
@@ -532,13 +557,13 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
         param_ranges = {name: (PARAM_BOUNDS[name]['lb'], PARAM_BOUNDS[name]['ub'])
                         for name in param_names}
 
-    # Generate tasks
-    print(f"Generating {n_subjects} x {n_tasks_per_subject} tasks...")
-    tasks = generate_tasks(n_subjects, n_tasks_per_subject, task_params, blocks)
+    # Generate tasks (parallel)
+    print(f"Setting up {n_subjects} x {n_tasks_per_subject} tasks...")
+    tasks = generate_tasks_parallel(n_subjects, n_tasks_per_subject, task_params, blocks, n_processes)
 
-    # Simulate subjects with known parameters
-    print(f"Simulating {n_subjects} x {n_tasks_per_subject} x {n_reps} subject behaviors...")
-    subjects, true_params = simulate_subjects(param_ranges, tasks, n_reps, fixed_params)
+    # Simulate subjects with known parameters (parallel)
+    print(f"Setting up {n_subjects} x {n_tasks_per_subject} x {n_reps} subject behaviors...")
+    subjects, true_params = simulate_subjects_parallel(param_ranges, tasks, n_reps, fixed_params, n_processes)
 
     # Fit parameters
     n_fits = n_subjects * n_tasks_per_subject * n_reps * n_refits

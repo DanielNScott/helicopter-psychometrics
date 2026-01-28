@@ -10,9 +10,8 @@ def compute_regressor_fim(subjects, tasks, noise_var=None):
     """
     Compute Fisher information approximation from regressor covariance.
 
-    For OLS with model: update = c + beta_cpp*X1 + beta_ru*X2
-    where X1 = pe*cpp, X2 = pe*ru*(1-cpp), the Fisher information matrix
-    is proportional to X'X / noise_var.
+    For OLS with model: update = c + beta_pe*pe + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
+    the Fisher information matrix is proportional to X'X / noise_var.
 
     Parameters:
         subjects (list) - Nested list subjects[s][t][r] or flat list of Subject instances
@@ -21,14 +20,14 @@ def compute_regressor_fim(subjects, tasks, noise_var=None):
 
     Returns:
         dict with:
-            'fim' (ndarray)          - Per-trial Fisher information matrix [2, 2]
-            'fim_inv' (ndarray)      - Inverse per-trial FIM [2, 2]
+            'fim' (ndarray)          - Per-trial Fisher information matrix [3, 3]
+            'fim_inv' (ndarray)      - Inverse per-trial FIM [3, 3]
             'eigenvalues' (ndarray)  - FIM eigenvalues (largest first)
             'eigenvectors' (ndarray) - FIM eigenvectors as columns
             'condition_number' (float) - Ratio of largest to smallest eigenvalue
-            'regressor_corr' (float) - Correlation between regressors
+            'regressor_corr' (ndarray) - Correlation matrix between regressors [3, 3]
             'n_trials' (int)         - Total trials used
-            'param_names' (list)     - ['beta_cpp', 'beta_ru']
+            'param_names' (list)     - ['beta_pe', 'beta_cpp', 'beta_ru']
     """
     # Flatten nested subject/task lists if needed
     subj_list = []
@@ -45,7 +44,7 @@ def compute_regressor_fim(subjects, tasks, noise_var=None):
         task_list = tasks
 
     # Collect regressors from all subjects/tasks
-    X1_all, X2_all, resid_all = [], [], []
+    X_pe_all, X_cpp_all, X_ru_all, resid_all = [], [], [], []
 
     for subj, task in zip(subj_list, task_list):
         pe = subj.responses.pe
@@ -53,29 +52,32 @@ def compute_regressor_fim(subjects, tasks, noise_var=None):
         ru = subj.beliefs.relunc
         up = subj.responses.update
 
-        X1 = pe * cpp
-        X2 = pe * ru * (1 - cpp)
+        X_pe = pe
+        X_cpp = pe * cpp
+        X_ru = pe * ru * (1 - cpp)
 
-        X1_all.append(X1)
-        X2_all.append(X2)
+        X_pe_all.append(X_pe)
+        X_cpp_all.append(X_cpp)
+        X_ru_all.append(X_ru)
 
         # Compute residuals for noise variance estimate
-        X = np.column_stack([np.ones(len(pe)), X1, X2])
+        X = np.column_stack([np.ones(len(pe)), X_pe, X_cpp, X_ru])
         beta_hat = np.linalg.lstsq(X, up, rcond=None)[0]
         resid = up - X @ beta_hat
         resid_all.append(resid)
 
-    X1_all = np.concatenate(X1_all)
-    X2_all = np.concatenate(X2_all)
+    X_pe_all = np.concatenate(X_pe_all)
+    X_cpp_all = np.concatenate(X_cpp_all)
+    X_ru_all = np.concatenate(X_ru_all)
     resid_all = np.concatenate(resid_all)
-    n_trials = len(X1_all)
+    n_trials = len(X_pe_all)
 
     # Estimate noise variance from residuals if not provided
     if noise_var is None:
         noise_var = np.var(resid_all)
 
     # Build design matrix (excluding intercept for FIM of beta parameters)
-    X = np.column_stack([X1_all, X2_all])
+    X = np.column_stack([X_pe_all, X_cpp_all, X_ru_all])
 
     # Fisher information per trial: X'X / (n_trials * noise_var)
     fim = (X.T @ X) / (n_trials * noise_var)
@@ -92,8 +94,8 @@ def compute_regressor_fim(subjects, tasks, noise_var=None):
     # Condition number (ratio of largest to smallest eigenvalue)
     condition_number = eigenvalues[0] / eigenvalues[-1]
 
-    # Regressor correlation
-    regressor_corr = np.corrcoef(X1_all, X2_all)[0, 1]
+    # Regressor correlation matrix
+    regressor_corr = np.corrcoef(X.T)
 
     return {
         'fim': fim,
@@ -104,7 +106,7 @@ def compute_regressor_fim(subjects, tasks, noise_var=None):
         'regressor_corr': regressor_corr,
         'n_trials': n_trials,
         'noise_var': noise_var,
-        'param_names': ['beta_cpp', 'beta_ru'],
+        'param_names': ['beta_pe', 'beta_cpp', 'beta_ru'],
     }
 
 
@@ -170,8 +172,7 @@ def compute_task_fim(subj, task, noise_var=None):
     """
     Compute Fisher information matrix for a single subject-task.
 
-    For OLS with model: update = c + beta_cpp*X1 + beta_ru*X2
-    where X1 = pe*cpp, X2 = pe*ru*(1-cpp).
+    For OLS with model: update = c + beta_pe*pe + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
 
     Parameters:
         subj (Subject) - Subject with responses and beliefs
@@ -180,30 +181,32 @@ def compute_task_fim(subj, task, noise_var=None):
 
     Returns:
         dict with:
-            'fim' (ndarray) - Per-trial FIM [2, 2]
+            'fim' (ndarray) - Per-trial FIM [3, 3]
             'condition_number' (float)
-            'regressor_corr' (float)
-            'regressor_var' (ndarray) - Variance of each regressor [2]
+            'regressor_corr' (ndarray) - Correlation matrix [3, 3]
+            'regressor_var' (ndarray) - Variance of each regressor [3]
             'n_trials' (int)
+            'param_names' (list) - ['beta_pe', 'beta_cpp', 'beta_ru']
     """
     pe = subj.responses.pe
     cpp = subj.beliefs.cpp
     ru = subj.beliefs.relunc
     up = subj.responses.update
 
-    X1 = pe * cpp
-    X2 = pe * ru * (1 - cpp)
+    X_pe = pe
+    X_cpp = pe * cpp
+    X_ru = pe * ru * (1 - cpp)
     n_trials = len(pe)
 
     # Estimate noise variance from residuals if not provided
     if noise_var is None:
-        X = np.column_stack([np.ones(n_trials), X1, X2])
+        X = np.column_stack([np.ones(n_trials), X_pe, X_cpp, X_ru])
         beta_hat = np.linalg.lstsq(X, up, rcond=None)[0]
         resid = up - X @ beta_hat
         noise_var = np.var(resid)
 
     # Build design matrix for beta parameters only
-    X = np.column_stack([X1, X2])
+    X = np.column_stack([X_pe, X_cpp, X_ru])
 
     # Per-trial FIM
     fim = (X.T @ X) / (n_trials * noise_var)
@@ -214,8 +217,8 @@ def compute_task_fim(subj, task, noise_var=None):
     condition_number = eigenvalues[0] / eigenvalues[-1] if eigenvalues[-1] > 0 else np.inf
 
     # Regressor statistics
-    regressor_var = np.array([np.var(X1), np.var(X2)])
-    regressor_corr = np.corrcoef(X1, X2)[0, 1]
+    regressor_var = np.array([np.var(X_pe), np.var(X_cpp), np.var(X_ru)])
+    regressor_corr = np.corrcoef(X.T)
 
     return {
         'fim': fim,
@@ -225,6 +228,7 @@ def compute_task_fim(subj, task, noise_var=None):
         'regressor_var': regressor_var,
         'n_trials': n_trials,
         'noise_var': noise_var,
+        'param_names': ['beta_pe', 'beta_cpp', 'beta_ru'],
     }
 
 
@@ -307,14 +311,18 @@ def analyze_task_information(subjects, tasks, noise_var=None):
                 'subj_idx': s,
                 'task_idx': t,
                 'condition_number': np.mean([m['condition_number'] for m in fim_metrics]),
-                'regressor_corr': np.mean([m['regressor_corr'] for m in fim_metrics]),
-                'regressor_var_cpp': np.mean([m['regressor_var'][0] for m in fim_metrics]),
-                'regressor_var_ru': np.mean([m['regressor_var'][1] for m in fim_metrics]),
+                'regressor_var_pe': np.mean([m['regressor_var'][0] for m in fim_metrics]),
+                'regressor_var_cpp': np.mean([m['regressor_var'][1] for m in fim_metrics]),
+                'regressor_var_ru': np.mean([m['regressor_var'][2] for m in fim_metrics]),
                 'fim_00': np.mean([m['fim'][0, 0] for m in fim_metrics]),
                 'fim_11': np.mean([m['fim'][1, 1] for m in fim_metrics]),
+                'fim_22': np.mean([m['fim'][2, 2] for m in fim_metrics]),
                 'fim_01': np.mean([m['fim'][0, 1] for m in fim_metrics]),
-                'eig_max': np.mean([m['eigenvalues'][0] for m in fim_metrics]),
-                'eig_min': np.mean([m['eigenvalues'][1] for m in fim_metrics]),
+                'fim_02': np.mean([m['fim'][0, 2] for m in fim_metrics]),
+                'fim_12': np.mean([m['fim'][1, 2] for m in fim_metrics]),
+                'eig_0': np.mean([m['eigenvalues'][0] for m in fim_metrics]),
+                'eig_1': np.mean([m['eigenvalues'][1] for m in fim_metrics]),
+                'eig_2': np.mean([m['eigenvalues'][2] for m in fim_metrics]),
                 'noise_var': np.mean([m['noise_var'] for m in fim_metrics]),
             }
             row.update(task_features)
@@ -324,9 +332,11 @@ def analyze_task_information(subjects, tasks, noise_var=None):
 
     # Add error covariance eigenvalues (more interpretable than FIM eigenvalues)
     # Cov(beta_hat) = (n * FIM)^{-1}, so eig(Cov) = 1/(n * eig(FIM))
-    df['err_var_min'] = 1.0 / (df['n_trials'] * df['eig_max'])  # min error variance
-    df['err_var_max'] = 1.0 / (df['n_trials'] * df['eig_min'])  # max error variance
-    df['err_sd_min'] = np.sqrt(df['err_var_min'])
-    df['err_sd_max'] = np.sqrt(df['err_var_max'])
+    df['err_var_0'] = 1.0 / (df['n_trials'] * df['eig_0'])
+    df['err_var_1'] = 1.0 / (df['n_trials'] * df['eig_1'])
+    df['err_var_2'] = 1.0 / (df['n_trials'] * df['eig_2'])
+    df['err_sd_0'] = np.sqrt(df['err_var_0'])
+    df['err_sd_1'] = np.sqrt(df['err_var_1'])
+    df['err_sd_2'] = np.sqrt(df['err_var_2'])
 
     return df
