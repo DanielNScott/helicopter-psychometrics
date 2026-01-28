@@ -11,10 +11,13 @@ DEFAULT_PARAMS_SUBJ = {
     'unc':       1.0,
     'drift':     0.0,
     'init_state_est': 150.0,
-    'init_runlen_est': 10.0,
+    'init_runlen_est': 0.1,
     'noise_sd_update': 2.0,
+    'noise_sd_lr': 0.0,
+    'init_relunc': 0.1,
+    'ud': 1.0,
     'limit_updates': True,
-    'clip': True
+    'clip': False
 }
 
 
@@ -122,7 +125,7 @@ def simulate_subject(subj, obs, params=DEFAULT_PARAMS_SUBJ):
             bcpp = params['beta_cpp'],
             bru  = params['beta_ru'],
             clip = params['clip'],
-            noise_sd = params['noise_sd_update']
+            noise_sd = params['noise_sd_lr']
         )
 
         # Set state prediction error
@@ -180,7 +183,7 @@ def set_responses(pred, pe, update):
 
 
 # Method for inferring beliefs from real subject data
-def get_beliefs(responses, obs, new_blk, hazard, noise_sd, params=None, init_ru=0.1, ud=1.0, bnds=[0,300]):
+def get_beliefs(responses, obs, new_blk, hazard, noise_sd, params=None, bnds=[0,300]):
     """Returns inferred subjective quantities from combination of observable subject data and task information."""
     ntrials = len(obs)
 
@@ -200,9 +203,9 @@ def get_beliefs(responses, obs, new_blk, hazard, noise_sd, params=None, init_ru=
 
         # Reset relative uncertainty at new blocks
         if new_blk[t]:
-            beliefs.relunc[t] = init_ru
+            beliefs.relunc[t] = params['init_relunc']
         else:
-            beliefs.relunc[t] = get_relunc(beliefs.relunc[t-1], responses.pe[t-1], beliefs.cpp[t-1], noise_sd[t], ud)
+            beliefs.relunc[t] = get_relunc(beliefs.relunc[t-1], responses.pe[t-1], beliefs.cpp[t-1], noise_sd[t], params['ud'])
 
         # Compute total uncertainty
         tot_unc = (noise_sd[t] ** 2) / (1 - beliefs.relunc[t])
@@ -217,7 +220,7 @@ def get_beliefs(responses, obs, new_blk, hazard, noise_sd, params=None, init_ru=
             bcpp=params['beta_cpp'],
             bru=params['beta_ru'],
             clip=params['clip'],
-            noise_sd=params['noise_sd_update']
+            noise_sd=params['noise_sd_lr']
         )
 
     # Compute the update we would predict from these beliefs
