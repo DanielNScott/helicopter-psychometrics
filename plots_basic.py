@@ -95,15 +95,22 @@ def plot_subj_betas_strip(betas, model='m4', ax=None):
     nsubj = len(betas)
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    # Plot each beta as a strip
+    # Plot each beta as a strip, normalizing intercept by 1/300
     for i, col in enumerate(cols):
         xs = np.random.rand(nsubj) * 0.3 - 0.15 + i
         ys = betas[col].values
+        if col.endswith('_beta_c'):
+            ys = ys / 300
         ax.scatter(xs, ys, c=colors[i], alpha=0.6, zorder=2)
 
-    # Plot means
-    means = [betas[col].mean() for col in cols]
-    ax.scatter(range(len(cols)), means, c='k', marker='x', s=80, zorder=3, label='Normative')
+    # Plot means, normalizing intercept by 1/300
+    means = []
+    for col in cols:
+        m = betas[col].mean()
+        if col.endswith('_beta_c'):
+            m = m / 300
+        means.append(m)
+    ax.scatter(range(len(cols)), means, c='k', marker='x', s=80, zorder=3, label='Mean')
 
     ax.axhline(0, color='k', linestyle='--', alpha=0.3)
     ax.set_xticks(range(len(labels)))
@@ -143,19 +150,30 @@ def plot_lm_ve(subjs, ax=None):
     ax.legend()
 
 
-def plot_cumulative_ve(cumulative_ve, ax=None):
-    """Plot cumulative variance explained by PCA components.
+def plot_cumulative_ve(cumulative_ve_pca, cumulative_ve_lm=None, ax=None):
+    """Plot cumulative variance explained by PCA and optionally linear models.
 
     Parameters:
-        cumulative_ve (array) - Cumulative variance explained values.
+        cumulative_ve_pca (array) - Cumulative variance explained by PCA.
+        cumulative_ve_lm (array) - Cumulative variance explained by linear models.
         ax (matplotlib.axes.Axes) - Axes to plot on. If None, creates new figure.
     """
     if ax is None: fig, ax = plt.subplots()
 
-    ax.plot(range(len(cumulative_ve)), cumulative_ve, '-o')
-    ax.set_xlabel('Principal Component')
+    # Limit to first 3 components
+    pca_vals = cumulative_ve_pca[:3]
+    ax.plot(range(len(pca_vals)), pca_vals, '-o', label='PCA')
+
+    if cumulative_ve_lm is not None:
+        lm_vals = cumulative_ve_lm[:3]
+        ax.plot(range(len(lm_vals)), lm_vals, '-s', label='Linear Model')
+        ax.legend()
+
+    ax.set_xticks([0, 1, 2])
+    ax.set_xticklabels(['1', '2', '3'])
+    ax.set_xlabel('Number of Components')
     ax.set_ylabel('Cumulative Variance Explained')
-    ax.set_title('Cumulative Variance Explained by PCA')
+    ax.set_title('Cumulative Variance Explained')
 
 
 def plot_scores_strip(scores, ax=None):
@@ -330,3 +348,4 @@ def cdf(x):
     vals = x[inds]
 
     return vals, frac
+

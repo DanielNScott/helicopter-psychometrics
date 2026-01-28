@@ -29,3 +29,4 @@ FIG_FMT = '.svg'
 # Standard figure sizes
 FIG_STD_WIDTH  = 6.4
 FIG_STD_HEIGHT = 4.8
+FIG_WIDE_WIDTH = 9.6  # 1.5x standard width

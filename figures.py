@@ -3,7 +3,8 @@
 from configs import *
 from subjects import *
 from analysis import *
-from plots import *
+from plots_basic import *
+from plots_recovery import *
 from svgtools import *
 
 import os
@@ -208,8 +209,8 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
     """Generate Figure 3: Normative model fit and variance explained.
 
     Figure 3 layout:
-        Row 1: [A] PE vs Update comparison, [B] Beta strip plots, [C] Trialwise regression VE
-        Row 2: [D] Cumulative VE by PCA, [E] Score strip plots, [F] PCA reconstruction VE
+        Row 1: [A] PE vs Update comparison, [B] Beta strip plots, [C] Cumulative VE (PCA + LM)
+        Row 2: [D] Trialwise regression VE, [E] PCA reconstruction VE
 
     Parameters:
         subjs (list) - List of Subject objects with beliefs.
@@ -252,30 +253,25 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig3_B' + FIG_FMT, dpi=300)
 
-    # --- Panel C: Trialwise regression VE ---
+    # --- Panel C: Cumulative VE (PCA and linear model) ---
+    cumulative_ve_lm = get_lm_cumulative_ve(subjs)
     fig, ax = plt.subplots()
-    plot_lm_ve(subjs, ax=ax)
+    plot_cumulative_ve(cumulative_ve, cumulative_ve_lm, ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig3_C' + FIG_FMT, dpi=300)
 
-    # --- Panel D: Cumulative VE by PCA ---
-    fig, ax = plt.subplots()
-    plot_cumulative_ve(cumulative_ve, ax=ax)
+    # --- Panel D: Trialwise regression VE ---
+    fig, ax = plt.subplots(figsize=(FIG_WIDE_WIDTH, FIG_STD_HEIGHT))
+    plot_lm_ve(subjs, ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig3_D' + FIG_FMT, dpi=300)
 
-    # --- Panel E: Score strip plots ---
-    fig, ax = plt.subplots()
-    plot_scores_strip(subj_pca_scores, ax=ax)
-    fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig3_E' + FIG_FMT, dpi=300)
-
-    # --- Panel F: PCA reconstruction VE ---
+    # --- Panel E: PCA reconstruction VE ---
     reconstruction_ve = get_subj_pca_ve(subj_pcp_lr, group_pca_basis, subj_pca_scores)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(FIG_WIDE_WIDTH, FIG_STD_HEIGHT))
     plot_pca_reconstruction_ve(reconstruction_ve, ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig3_F' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig3_E' + FIG_FMT, dpi=300)
 
     if close: plt.close('all')
 
@@ -395,8 +391,8 @@ def compile_figure_3(cleanup=True):
     """Compile Figure 3 from individual panels.
 
     Layout:
-        Row 1: [A] [B] [C]  (PE comparison, beta strips, regression VE)
-        Row 2: [D] [E] [F]  (cumulative VE, score strips, PCA reconstruction VE)
+        Row 1: [A] [B] [C]  (PE comparison, beta strips, cumulative VE)
+        Row 2: [D] [E]      (regression VE, PCA reconstruction VE)
     """
     # Input panel files
     panel_a = FIGURES_DIR + 'fig3_A' + FIG_FMT
@@ -404,12 +400,10 @@ def compile_figure_3(cleanup=True):
     panel_c = FIGURES_DIR + 'fig3_C' + FIG_FMT
     panel_d = FIGURES_DIR + 'fig3_D' + FIG_FMT
     panel_e = FIGURES_DIR + 'fig3_E' + FIG_FMT
-    panel_f = FIGURES_DIR + 'fig3_F' + FIG_FMT
 
     # Intermediate files
     row1_ab = FIGURES_DIR + 'fig3_row1_ab.svg'
     row1 = FIGURES_DIR + 'fig3_row1.svg'
-    row2_de = FIGURES_DIR + 'fig3_row2_de.svg'
     row2 = FIGURES_DIR + 'fig3_row2.svg'
     combined = FIGURES_DIR + 'fig3_combined.svg'
     labeled = FIGURES_DIR + 'fig3_labeled.svg'
@@ -419,9 +413,8 @@ def compile_figure_3(cleanup=True):
     combine_svgs_horizontal(panel_a, panel_b, row1_ab)
     combine_svgs_horizontal(row1_ab, panel_c, row1)
 
-    # Build row 2: D + E + F
-    combine_svgs_horizontal(panel_d, panel_e, row2_de)
-    combine_svgs_horizontal(row2_de, panel_f, row2)
+    # Build row 2: D + E
+    combine_svgs_horizontal(panel_d, panel_e, row2)
 
     # Combine rows
     combine_svgs_vertical(row1, row2, combined)
@@ -432,7 +425,6 @@ def compile_figure_3(cleanup=True):
     add_text_to_svg(labeled, labeled, 'C', x=430, y=20, font_size=14)
     add_text_to_svg(labeled, labeled, 'D', x=10, y=170, font_size=14)
     add_text_to_svg(labeled, labeled, 'E', x=220, y=170, font_size=14)
-    add_text_to_svg(labeled, labeled, 'F', x=430, y=170, font_size=14)
 
     # Scale to final width
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
@@ -442,7 +434,7 @@ def compile_figure_3(cleanup=True):
 
     # Clean up intermediate files
     if cleanup:
-        for f in [row1_ab, row1, row2_de, row2, combined, labeled]:
+        for f in [row1_ab, row1, row2, combined, labeled]:
             if os.path.exists(f): os.remove(f)
 
 
@@ -507,4 +499,85 @@ def compile_figure_4(cleanup=True):
     # Clean up intermediate files
     if cleanup:
         for f in [combined, labeled]:
+            if os.path.exists(f): os.remove(f)
+
+
+def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
+    """Generate Figure 5: Estimation covariance and FIM analysis.
+
+    Figure 5 layout:
+        [A] Error correlation matrix
+        [B] N changepoints vs std run length scatter
+        [C] Error source decomposition (task vs rep variability)
+
+    Parameters:
+        err_analysis (dict) - Output from analyze_error_covariance.
+        fim_df (pd.DataFrame) - Output from analyze_task_information.
+        recovery_analysis (dict) - Output from analyze_recovery.
+        savefig (bool) - Whether to save individual panel figures.
+        close (bool) - Whether to close figures after saving.
+    """
+    from fim import plot_task_scatter
+    from plots_basic import plot_error_corr_matrix, plot_variance_decomposition
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    # --- Panel A: Error correlation matrix ---
+    fig, ax = plt.subplots()
+    im = plot_error_corr_matrix(err_analysis, ax=ax)
+    fig.colorbar(im, ax=ax, shrink=0.8)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_A' + FIG_FMT, dpi=300)
+
+    # --- Panel B: N changepoints vs std run length, colored by max error SD ---
+    fig, ax = plt.subplots()
+    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_max', ax=ax)
+    fig.colorbar(sc, ax=ax, shrink=0.8)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_B' + FIG_FMT, dpi=300)
+
+    # --- Panel C: Error source decomposition ---
+    fig, ax = plt.subplots()
+    plot_variance_decomposition(recovery_analysis, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_C' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def compile_figure_5(cleanup=True):
+    """Compile Figure 5 from individual panels.
+
+    Layout:
+        [A] [B] [C]  (error corr, task scatter, variance decomposition)
+    """
+    # Input panel files
+    panel_a = FIGURES_DIR + 'fig5_A' + FIG_FMT
+    panel_b = FIGURES_DIR + 'fig5_B' + FIG_FMT
+    panel_c = FIGURES_DIR + 'fig5_C' + FIG_FMT
+
+    # Intermediate files
+    row_ab = FIGURES_DIR + 'fig5_row_ab.svg'
+    combined = FIGURES_DIR + 'fig5_combined.svg'
+    labeled = FIGURES_DIR + 'fig5_labeled.svg'
+    final = FIGURES_DIR + 'fig5_final.svg'
+
+    # Build row: A + B + C
+    combine_svgs_horizontal(panel_a, panel_b, row_ab)
+    combine_svgs_horizontal(row_ab, panel_c, combined)
+
+    # Add panel labels
+    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=220, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'C', x=430, y=20, font_size=14)
+
+    # Scale to final width
+    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
+
+    # Convert to PDF
+    svg_to_pdf(final, final.replace('.svg', '.pdf'))
+
+    # Clean up intermediate files
+    if cleanup:
+        for f in [row_ab, combined, labeled]:
             if os.path.exists(f): os.remove(f)
