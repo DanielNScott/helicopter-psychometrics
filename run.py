@@ -2,21 +2,20 @@
 from configs import *
 
 # Project imports
-from dataio import *
-from subjects import *
-from tasks import *
-from aggregation import *
-from analysis import *
-from figures import *
-from recovery import *
-from reliability import *
-from mle import *
-from fim import *
+from changepoint.dataio import *
+from changepoint.subjects import *
+from changepoint.tasks import *
+from analysis.aggregation import *
+from analysis.analysis import *
+from analysis.reliability import *
+from estimation.mle import *
+from estimation.fim import *
+from estimation.main import recovery_analysis
+from plotting.figures import *
 
 # Settings
 create_figures = [5] #[1,2,3,4,5]
 run_recovery = True
-
 
 # Read experimental data
 subjs, tasks = read_experiment(max_subj=MAX_SUBJ_NUM)
@@ -33,34 +32,8 @@ group_pca_basis, subj_pca_lr_scores, group_pca_ve = fit_peri_cp_pca(subj_pcp_lr)
 # Split half reliability analyses
 reliabilities = do_split_half_analysis(subjs, tasks, nreps=20)
 
-# Parameter recovery analysis (for figure 5)
-if run_recovery:
-    blocks = [
-        {'ntrials': 120, 'noise_sd': 10},
-        {'ntrials': 120, 'noise_sd': 25},
-        {'ntrials': 120, 'noise_sd': 10},
-        {'ntrials': 120, 'noise_sd': 25},
-    ]
-
-    recovery_result = parameter_recovery(
-        param_names=['beta_cpp', 'beta_ru'],
-        n_subjects=100,
-        n_tasks_per_subject=5,
-        n_reps=5,
-        n_refits=1,
-        blocks=blocks,
-        fit_method='ols',
-    )
-    save_recovery(recovery_result, 'n0_recovery')
-
-else:
-    recovery_result = load_recovery('n0_recovery')
-
-
-# Analyze recovery results
-err_analysis = analyze_error_covariance(recovery_result['true_params'], recovery_result['results'])
-fim_df = analyze_task_information(recovery_result['subjects'], recovery_result['tasks'])
-
+# Run the parameter recovery analysis
+recovery, err_analysis, fim_df = recovery_analysis()
 
 # Figure 1
 if 1 in create_figures:
@@ -84,5 +57,5 @@ if 4 in create_figures:
 
 # Figure 5
 if 5 in create_figures:
-    figure_5(err_analysis, fim_df, recovery_result['analysis'])
+    figure_5(err_analysis, fim_df, recovery['analysis'])
     compile_figure_5()

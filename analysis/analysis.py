@@ -1,7 +1,8 @@
 """Functions for fitting models to subject data."""
 from configs import *
-from aggregation import *
+from analysis.aggregation import *
 
+import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from scipy.stats import linregress
 

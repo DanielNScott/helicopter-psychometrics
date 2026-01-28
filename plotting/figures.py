@@ -1,11 +1,11 @@
 """Functions to generate main manuscript figures."""
 
 from configs import *
-from subjects import *
-from analysis import *
-from plots_basic import *
-from plots_recovery import *
-from svgtools import *
+from changepoint.subjects import *
+from analysis.analysis import *
+from plotting.plots_basic import *
+from plotting.plots_recovery import *
+from plotting.svgtools import *
 
 import os
 
@@ -276,7 +276,80 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
     if close: plt.close('all')
 
 
-def compile_figure_1(cleanup=True):
+def figure_4(reliabilities, savefig=True, close=True):
+    """Generate Figure 4: Split-half reliability of parameter estimates.
+
+    Figure 4 layout:
+        [A] PCA score reliability
+        [B] Regression beta reliability
+
+    Parameters:
+        reliabilities (pd.DataFrame) - DataFrame from do_split_half_analysis.
+        savefig (bool) - Whether to save individual panel figures.
+        close (bool) - Whether to close figures after saving.
+    """
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    # --- Panel A: PCA score reliability ---
+    fig, ax = plt.subplots()
+    plot_score_reliability(reliabilities, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig4_A' + FIG_FMT, dpi=300)
+
+    # --- Panel B: Regression beta reliability ---
+    fig, ax = plt.subplots()
+    plot_beta_reliability(reliabilities, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig4_B' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
+    """Generate Figure 5: Estimation covariance and FIM analysis.
+
+    Figure 5 layout:
+        [A] Error correlation matrix
+        [B] N changepoints vs std run length scatter
+        [C] Error source decomposition (task vs rep variability)
+
+    Parameters:
+        err_analysis (dict) - Output from analyze_error_covariance.
+        fim_df (pd.DataFrame) - Output from analyze_task_information.
+        recovery_analysis (dict) - Output from analyze_recovery.
+        savefig (bool) - Whether to save individual panel figures.
+        close (bool) - Whether to close figures after saving.
+    """
+    from plotting.plots_fim import plot_task_scatter
+    from plotting.plots_recovery import plot_error_corr_matrix, plot_variance_decomposition
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    # --- Panel A: Error correlation matrix ---
+    fig, ax = plt.subplots()
+    im = plot_error_corr_matrix(err_analysis, ax=ax)
+    fig.colorbar(im, ax=ax, shrink=0.8)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_A' + FIG_FMT, dpi=300)
+
+    # --- Panel B: N changepoints vs std run length, colored by max error SD ---
+    fig, ax = plt.subplots()
+    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_max', ax=ax)
+    fig.colorbar(sc, ax=ax, shrink=0.8)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_B' + FIG_FMT, dpi=300)
+
+    # --- Panel C: Error source decomposition ---
+    fig, ax = plt.subplots()
+    plot_variance_decomposition(recovery_analysis, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_C' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def compile_figure_1(cleanup=FIG_CLEANUP):
     """Compile Figure 1 from individual panels.
 
     Layout:
@@ -335,7 +408,7 @@ def compile_figure_1(cleanup=True):
             if os.path.exists(f): os.remove(f)
 
 
-def compile_figure_2(cleanup=True):
+def compile_figure_2(cleanup=FIG_CLEANUP):
     """Compile Figure 2 from individual panels.
 
     Layout:
@@ -387,7 +460,7 @@ def compile_figure_2(cleanup=True):
             if os.path.exists(f): os.remove(f)
 
 
-def compile_figure_3(cleanup=True):
+def compile_figure_3(cleanup=FIG_CLEANUP):
     """Compile Figure 3 from individual panels.
 
     Layout:
@@ -438,37 +511,7 @@ def compile_figure_3(cleanup=True):
             if os.path.exists(f): os.remove(f)
 
 
-def figure_4(reliabilities, savefig=True, close=True):
-    """Generate Figure 4: Split-half reliability of parameter estimates.
-
-    Figure 4 layout:
-        [A] PCA score reliability
-        [B] Regression beta reliability
-
-    Parameters:
-        reliabilities (pd.DataFrame) - DataFrame from do_split_half_analysis.
-        savefig (bool) - Whether to save individual panel figures.
-        close (bool) - Whether to close figures after saving.
-    """
-
-    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
-
-    # --- Panel A: PCA score reliability ---
-    fig, ax = plt.subplots()
-    plot_score_reliability(reliabilities, ax=ax)
-    fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig4_A' + FIG_FMT, dpi=300)
-
-    # --- Panel B: Regression beta reliability ---
-    fig, ax = plt.subplots()
-    plot_beta_reliability(reliabilities, ax=ax)
-    fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig4_B' + FIG_FMT, dpi=300)
-
-    if close: plt.close('all')
-
-
-def compile_figure_4(cleanup=True):
+def compile_figure_4(cleanup=FIG_CLEANUP):
     """Compile Figure 4 from individual panels.
 
     Layout:
@@ -502,50 +545,8 @@ def compile_figure_4(cleanup=True):
             if os.path.exists(f): os.remove(f)
 
 
-def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
-    """Generate Figure 5: Estimation covariance and FIM analysis.
 
-    Figure 5 layout:
-        [A] Error correlation matrix
-        [B] N changepoints vs std run length scatter
-        [C] Error source decomposition (task vs rep variability)
-
-    Parameters:
-        err_analysis (dict) - Output from analyze_error_covariance.
-        fim_df (pd.DataFrame) - Output from analyze_task_information.
-        recovery_analysis (dict) - Output from analyze_recovery.
-        savefig (bool) - Whether to save individual panel figures.
-        close (bool) - Whether to close figures after saving.
-    """
-    from fim import plot_task_scatter
-    from plots_basic import plot_error_corr_matrix, plot_variance_decomposition
-
-    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
-
-    # --- Panel A: Error correlation matrix ---
-    fig, ax = plt.subplots()
-    im = plot_error_corr_matrix(err_analysis, ax=ax)
-    fig.colorbar(im, ax=ax, shrink=0.8)
-    fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig5_A' + FIG_FMT, dpi=300)
-
-    # --- Panel B: N changepoints vs std run length, colored by max error SD ---
-    fig, ax = plt.subplots()
-    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_max', ax=ax)
-    fig.colorbar(sc, ax=ax, shrink=0.8)
-    fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig5_B' + FIG_FMT, dpi=300)
-
-    # --- Panel C: Error source decomposition ---
-    fig, ax = plt.subplots()
-    plot_variance_decomposition(recovery_analysis, ax=ax)
-    fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig5_C' + FIG_FMT, dpi=300)
-
-    if close: plt.close('all')
-
-
-def compile_figure_5(cleanup=True):
+def compile_figure_5(cleanup=FIG_CLEANUP):
     """Compile Figure 5 from individual panels.
 
     Layout:

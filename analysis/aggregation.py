@@ -70,8 +70,8 @@ def align_trials(task, endpoint=4):
 
 def subset(subj_orig, task_orig, inds):
     """Subset one subject and one task to specific trial indices."""
-    from subjects import Subject, Responses, Beliefs
-    from tasks import ChangepointTask
+    from changepoint.subjects import Subject, Responses, Beliefs
+    from changepoint.tasks import ChangepointTask
 
     # Create new subject with subsetted responses and beliefs
     responses = Responses(len(inds))

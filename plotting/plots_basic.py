@@ -128,7 +128,7 @@ def plot_lm_ve(subjs, ax=None):
     """
     if ax is None: fig, ax = plt.subplots()
 
-    from analysis import fit_linear_models
+    from analysis.analysis import fit_linear_models
 
     models = ['m0', 'm1', 'm2']
     labels = ['pe', 'pe-cpp', 'pe-cpp-ru']

@@ -10,11 +10,13 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import numpy as np
 import scipy as sp
 import pandas as pd
-import statsmodels.api as sm
 import matplotlib.pyplot as plt
 
 # Interactive plotting
 plt.ion()
+
+# Try to avoid recomputing
+USE_CACHE = True
 
 # Configuration variables
 FIT_SUBJECT_PARAMS = False
@@ -23,8 +25,9 @@ SUBJ_DATA_DIR = './data/'
 MAX_SUBJ_NUM = 100 # Reduce for debugging
 
 # Figure output settings
-FIGURES_DIR = './figs/'
+FIGURES_DIR = './figures/'
 FIG_FMT = '.svg'
+FIG_CLEANUP = True
 
 # Standard figure sizes
 FIG_STD_WIDTH  = 6.4

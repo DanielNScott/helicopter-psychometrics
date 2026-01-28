@@ -7,9 +7,9 @@ Provides functions for:
 3. Analyzing recovery statistics (variance decomposition)
 """
 from configs import *
-from subjects import Subject, simulate_subject, get_beliefs, DEFAULT_PARAMS_SUBJ
-from tasks import simulate_cpt
-from analysis import fit_linear_models
+from changepoint.subjects import Subject, simulate_subject, get_beliefs, DEFAULT_PARAMS_SUBJ
+from changepoint.tasks import simulate_cpt
+from analysis.analysis import fit_linear_models
 
 import scipy.optimize as opt
 from scipy.stats import norm

@@ -1,7 +1,7 @@
 """Within and between subject reliability analyses."""
 from configs import *
-from analysis import fit_linear_models, fit_peri_cp_pca, get_peri_cp_stats
-from aggregation import split_within_subjects
+from analysis.analysis import fit_linear_models, fit_peri_cp_pca, get_peri_cp_stats
+from analysis.aggregation import split_within_subjects
 
 
 def _get_split_half_reliabilities(subjs, tasks, analysis_fn, nreps=20):

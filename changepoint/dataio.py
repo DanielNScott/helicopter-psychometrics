@@ -1,6 +1,6 @@
 from configs import *
-from subjects import subject_from_experiment
-from tasks import ChangepointTask
+from changepoint.subjects import subject_from_experiment
+from changepoint.tasks import ChangepointTask
 
 def concatenate_blocks(subj):
     '''Concatenates blocks for each subject in the list.'''

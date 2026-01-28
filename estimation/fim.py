@@ -4,7 +4,7 @@ Provides functions to compute and analyze Fisher information matrices
 for the n0 regression model, at both aggregate and per-task levels.
 """
 from configs import *
-from recovery import recovery_stats
+from estimation.mle import recovery_stats
 
 def compute_regressor_fim(subjects, tasks, noise_var=None):
     """
