@@ -26,19 +26,18 @@ def figure_1(subjs, tasks, subj_pcp_lr, subj_pca_scores, savefig=True, close=Tru
 
     if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
 
-    # Use PC scores to find most and least adaptive subjects
-    # Score_0 captures overall learning rate level
-    # Score_1 captures adaptivity (high = more adaptive around changepoints)
-    scores = subj_pca_scores['Score_1'].values
+    # Use absolute PC0 scores to find most and least adaptive subjects
+    # Matches original selection: high abs(PC0) = low adaptive, low abs(PC0) = high adaptive
+    scores_abs = np.abs(subj_pca_scores['Score_0'].values)
 
-    # Non-adaptive: lowest Score_1 (flat learning rate profile)
-    snum_nonadapt = np.argmin(scores)
+    # Non-adaptive: highest absolute Score_0
+    snum_nonadapt = np.argmax(scores_abs)
 
-    # Adaptive: highest Score_1 (peaked learning rate at CP)
-    snum_adapt = np.argmax(scores)
+    # Adaptive: lowest absolute Score_0
+    snum_adapt = np.argmin(scores_abs)
 
-    print(f"Non-adaptive subject: {snum_nonadapt} (Score_1 = {scores[snum_nonadapt]:.3f})")
-    print(f"Adaptive subject: {snum_adapt} (Score_1 = {scores[snum_adapt]:.3f})")
+    print(f"Non-adaptive subject: {snum_nonadapt} (|Score_0| = {scores_abs[snum_nonadapt]:.3f})")
+    print(f"Adaptive subject: {snum_adapt} (|Score_0| = {scores_abs[snum_adapt]:.3f})")
 
     # Panel C: Non-adaptive subject task performance
     fig, ax = plt.subplots()
@@ -115,8 +114,8 @@ def figure_2(tasks, subj_pcp_lr, group_pca_basis, subj_pca_lr_scores, subj_linea
 
     # --- Panel A: Normative predictions ---
     fig, ax = plt.subplots()
+    ax.plot(sim.responses.pred[:ntrials], '-', label='Pred')
     ax.plot(tasks[0].obs[:ntrials], '.', label='Obs')
-    ax.plot(sim.responses.pred[:ntrials], '.', label='Pred')
     ax.legend(loc='lower right')
     ax.set_xlabel('Trial Number')
     ax.set_ylabel('Obs./Pred.')
@@ -226,23 +225,30 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
 
     if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
 
-    # --- Panel A: PE vs Update comparison (normative vs PE-only) ---
-    # Simulate normative and PE-only models on first task
-    sim_norm = Subject()
-    params_norm = DEFAULT_PARAMS_SUBJ.copy()
-    params_norm['noise_sd'] = tasks[0].noise_sd[0]
-    params_norm['hazard'] = tasks[0].hazard[0]
-    simulate_subject(sim_norm, tasks[0].obs, params_norm)
-
+    # --- Panel A: PE vs Update comparison (PE-only vs CPP-based) ---
+    # PE-only model: constant learning rate
     sim_pe = Subject()
     params_pe = DEFAULT_PARAMS_SUBJ.copy()
     params_pe['noise_sd'] = tasks[0].noise_sd[0]
-    params_pe['hazard'] = 0.0  # No changepoint detection
+    params_pe['hazard'] = tasks[0].hazard[0]
+    params_pe['beta_pe'] = 1.0   # Constant learning rate
+    params_pe['beta_cpp'] = 0.0  # No CPP modulation
+    params_pe['beta_ru'] = 0.0   # No RU modulation
     simulate_subject(sim_pe, tasks[0].obs, params_pe)
 
+    # CPP-based model: adaptive learning rate
+    sim_cpp = Subject()
+    params_cpp = DEFAULT_PARAMS_SUBJ.copy()
+    params_cpp['noise_sd'] = tasks[0].noise_sd[0]
+    params_cpp['hazard'] = tasks[0].hazard[0]
+    params_cpp['beta_pe'] = 0.0   # No constant component
+    params_cpp['beta_cpp'] = 1.0  # CPP modulation
+    params_cpp['beta_ru'] = 0.0   # No RU modulation
+    simulate_subject(sim_cpp, tasks[0].obs, params_cpp)
+
     fig, ax = plt.subplots()
-    plot_pe_update_model_comparison(sim_norm, sim_pe, ax=ax)
-    ax.set_title('Normative vs PE-Only')
+    plot_pe_update_model_comparison(sim_pe, sim_cpp, ax=ax)
+    ax.set_title('PE-Only vs CPP-Based')
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig3_A' + FIG_FMT, dpi=300)
 
@@ -307,12 +313,11 @@ def figure_4(reliabilities, savefig=True, close=True):
 
 
 def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
-    """Generate Figure 5: Estimation covariance and FIM analysis.
+    """Generate Figure 5: Parameter recovery and estimation analysis.
 
     Figure 5 layout:
-        [A] Error correlation matrix
-        [B] N changepoints vs std run length scatter
-        [C] Error source decomposition (task vs rep variability)
+        Row 1: [A] beta_pe recovery, [B] beta_cpp recovery, [C] beta_ru recovery
+        Row 2: [D] Error correlation matrix, [E] Task scatter, [F] Variance decomposition
 
     Parameters:
         err_analysis (dict) - Output from analyze_error_covariance.
@@ -322,29 +327,51 @@ def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
         close (bool) - Whether to close figures after saving.
     """
     from plotting.plots_fim import plot_task_scatter
-    from plotting.plots_recovery import plot_error_corr_matrix, plot_variance_decomposition
+    from plotting.plots_recovery import plot_error_corr_matrix, plot_variance_decomposition, plot_param_recovery
 
     if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
 
-    # --- Panel A: Error correlation matrix ---
+    # --- Row 1: Parameter recovery plots ---
+
+    # Panel A: beta_pe recovery
+    fig, ax = plt.subplots()
+    plot_param_recovery(recovery_analysis, 'beta_pe', ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_A' + FIG_FMT, dpi=300)
+
+    # Panel B: beta_cpp recovery
+    fig, ax = plt.subplots()
+    plot_param_recovery(recovery_analysis, 'beta_cpp', ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_B' + FIG_FMT, dpi=300)
+
+    # Panel C: beta_ru recovery
+    fig, ax = plt.subplots()
+    plot_param_recovery(recovery_analysis, 'beta_ru', ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_C' + FIG_FMT, dpi=300)
+
+    # --- Row 2: Estimation analysis ---
+
+    # Panel D: Error correlation matrix
     fig, ax = plt.subplots()
     im = plot_error_corr_matrix(err_analysis, ax=ax)
     fig.colorbar(im, ax=ax, shrink=0.8)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig5_A' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_D' + FIG_FMT, dpi=300)
 
-    # --- Panel B: N changepoints vs std run length, colored by max error SD ---
+    # Panel E: N changepoints vs std run length, colored by max error SD
     fig, ax = plt.subplots()
-    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_max', ax=ax)
+    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_2', ax=ax)
     fig.colorbar(sc, ax=ax, shrink=0.8)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig5_B' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_E' + FIG_FMT, dpi=300)
 
-    # --- Panel C: Error source decomposition ---
+    # Panel F: Error source decomposition
     fig, ax = plt.subplots()
     plot_variance_decomposition(recovery_analysis, ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig5_C' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig5_F' + FIG_FMT, dpi=300)
 
     if close: plt.close('all')
 
@@ -388,13 +415,18 @@ def compile_figure_1(cleanup=FIG_CLEANUP):
     # Merge rows vertically
     combine_svgs_vertical(row1, row2, combined)
 
-    # Add panel labels (positions will need adjustment based on actual panel sizes)
+    # Add panel labels
+    # Standard panel: 460.8 x 345.6 pt (6.4 x 4.8 inches at 72 dpi)
+    # Row 1: C at x=0, D at x=460.8, E at x=921.6
+    # Row 2: F at x=0, G at x=460.8, H at x=921.6, y offset by 345.6
+    pw = 460.8  # panel width
+    ph = 345.6  # panel height
     add_text_to_svg(combined, labeled, 'C', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=160, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=310, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'F', x=10, y=160, font_size=14)
-    add_text_to_svg(labeled, labeled, 'G', x=160, y=160, font_size=14)
-    add_text_to_svg(labeled, labeled, 'H', x=310, y=160, font_size=14)
+    add_text_to_svg(labeled, labeled, 'D', x=pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=2*pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'F', x=10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'G', x=pw+10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'H', x=2*pw+10, y=ph+20, font_size=14)
 
     # Scale to final width
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
@@ -402,9 +434,11 @@ def compile_figure_1(cleanup=FIG_CLEANUP):
     # Convert to PDF
     svg_to_pdf(final, final.replace('.svg', '.pdf'))
 
-    # Clean up intermediate files
+    # Clean up intermediate and panel files
     if cleanup:
-        for f in [row1_cd, row1, row2_fg, row2, combined, labeled]:
+        panel_files = [panel_c, panel_d, panel_e, panel_f, panel_g, panel_h]
+        intermediate_files = [row1_cd, row1, row2_fg, row2, combined, labeled]
+        for f in panel_files + intermediate_files:
             if os.path.exists(f): os.remove(f)
 
 
@@ -442,11 +476,15 @@ def compile_figure_2(cleanup=FIG_CLEANUP):
     combine_svgs_horizontal(cols_12, panel_c, combined)
 
     # Add panel labels
+    # Layout: col1 (A/D) + col2 (B/E) + C
+    # Standard panel: 460.8 x 345.6 pt
+    pw = 460.8  # panel width
+    ph = 345.6  # panel height
     add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=160, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=160, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=160, y=160, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=310, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
 
     # Scale to final width
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
@@ -454,9 +492,11 @@ def compile_figure_2(cleanup=FIG_CLEANUP):
     # Convert to PDF
     svg_to_pdf(final, final.replace('.svg', '.pdf'))
 
-    # Clean up intermediate files
+    # Clean up intermediate and panel files
     if cleanup:
-        for f in [col1, col2, cols_12, combined, labeled]:
+        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e]
+        intermediate_files = [col1, col2, cols_12, combined, labeled]
+        for f in panel_files + intermediate_files:
             if os.path.exists(f): os.remove(f)
 
 
@@ -493,11 +533,16 @@ def compile_figure_3(cleanup=FIG_CLEANUP):
     combine_svgs_vertical(row1, row2, combined)
 
     # Add panel labels
+    # Row 1: A, B, C (standard panels)
+    # Row 2: D, E (wide panels: 691.2 pt each)
+    pw = 460.8   # standard panel width
+    ph = 345.6   # panel height
+    wpw = 691.2  # wide panel width
     add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=220, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=430, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=170, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=220, y=170, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=wpw+10, y=ph+20, font_size=14)
 
     # Scale to final width
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
@@ -505,9 +550,11 @@ def compile_figure_3(cleanup=FIG_CLEANUP):
     # Convert to PDF
     svg_to_pdf(final, final.replace('.svg', '.pdf'))
 
-    # Clean up intermediate files
+    # Clean up intermediate and panel files
     if cleanup:
-        for f in [row1_ab, row1, row2, combined, labeled]:
+        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e]
+        intermediate_files = [row1_ab, row1, row2, combined, labeled]
+        for f in panel_files + intermediate_files:
             if os.path.exists(f): os.remove(f)
 
 
@@ -530,8 +577,10 @@ def compile_figure_4(cleanup=FIG_CLEANUP):
     combine_svgs_horizontal(panel_a, panel_b, combined)
 
     # Add panel labels
+    # Two standard panels side by side
+    pw = 460.8  # panel width
     add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=330, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
 
     # Scale to final width
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
@@ -539,38 +588,58 @@ def compile_figure_4(cleanup=FIG_CLEANUP):
     # Convert to PDF
     svg_to_pdf(final, final.replace('.svg', '.pdf'))
 
-    # Clean up intermediate files
+    # Clean up intermediate and panel files
     if cleanup:
-        for f in [combined, labeled]:
+        panel_files = [panel_a, panel_b]
+        intermediate_files = [combined, labeled]
+        for f in panel_files + intermediate_files:
             if os.path.exists(f): os.remove(f)
-
 
 
 def compile_figure_5(cleanup=FIG_CLEANUP):
     """Compile Figure 5 from individual panels.
 
     Layout:
-        [A] [B] [C]  (error corr, task scatter, variance decomposition)
+        Row 1: [A] [B] [C]  (beta_pe, beta_cpp, beta_ru recovery)
+        Row 2: [D] [E] [F]  (error corr, task scatter, variance decomposition)
     """
     # Input panel files
     panel_a = FIGURES_DIR + 'fig5_A' + FIG_FMT
     panel_b = FIGURES_DIR + 'fig5_B' + FIG_FMT
     panel_c = FIGURES_DIR + 'fig5_C' + FIG_FMT
+    panel_d = FIGURES_DIR + 'fig5_D' + FIG_FMT
+    panel_e = FIGURES_DIR + 'fig5_E' + FIG_FMT
+    panel_f = FIGURES_DIR + 'fig5_F' + FIG_FMT
 
     # Intermediate files
-    row_ab = FIGURES_DIR + 'fig5_row_ab.svg'
+    row1_ab = FIGURES_DIR + 'fig5_row1_ab.svg'
+    row1 = FIGURES_DIR + 'fig5_row1.svg'
+    row2_de = FIGURES_DIR + 'fig5_row2_de.svg'
+    row2 = FIGURES_DIR + 'fig5_row2.svg'
     combined = FIGURES_DIR + 'fig5_combined.svg'
     labeled = FIGURES_DIR + 'fig5_labeled.svg'
     final = FIGURES_DIR + 'fig5_final.svg'
 
-    # Build row: A + B + C
-    combine_svgs_horizontal(panel_a, panel_b, row_ab)
-    combine_svgs_horizontal(row_ab, panel_c, combined)
+    # Build row 1: A + B + C
+    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
+    combine_svgs_horizontal(row1_ab, panel_c, row1)
+
+    # Build row 2: D + E + F
+    combine_svgs_horizontal(panel_d, panel_e, row2_de)
+    combine_svgs_horizontal(row2_de, panel_f, row2)
+
+    # Combine rows vertically
+    combine_svgs_vertical(row1, row2, combined)
 
     # Add panel labels
+    pw = 460.8  # panel width
+    ph = 345.6  # panel height
     add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=220, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=430, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'F', x=2*pw+10, y=ph+20, font_size=14)
 
     # Scale to final width
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
@@ -578,7 +647,9 @@ def compile_figure_5(cleanup=FIG_CLEANUP):
     # Convert to PDF
     svg_to_pdf(final, final.replace('.svg', '.pdf'))
 
-    # Clean up intermediate files
+    # Clean up intermediate and panel files
     if cleanup:
-        for f in [row_ab, combined, labeled]:
+        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e, panel_f]
+        intermediate_files = [row1_ab, row1, row2_de, row2, combined, labeled]
+        for f in panel_files + intermediate_files:
             if os.path.exists(f): os.remove(f)

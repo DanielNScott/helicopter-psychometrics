@@ -25,7 +25,7 @@ SUBJ_DATA_DIR = './data/'
 MAX_SUBJ_NUM = 100 # Reduce for debugging
 
 # Figure output settings
-FIGURES_DIR = './figures/'
+FIGURES_DIR = './data/figures/'
 FIG_FMT = '.svg'
 FIG_CLEANUP = True
 

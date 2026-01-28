@@ -8,9 +8,9 @@ def plot_task_example(subjs, tasks, snum=0, ax=None):
     if ax is None: fig, ax = plt.subplots()
 
     ntrials = 120
-    ax.plot(tasks[snum].obs[0:ntrials], '.')
-    ax.plot(subjs[snum].responses.pred[0:ntrials], '.')
-    ax.legend(['Obs', 'Pred'], loc='lower right')
+    ax.plot(subjs[snum].responses.pred[0:ntrials], '-', label='Pred')
+    ax.plot(tasks[snum].obs[0:ntrials], '.', label='Obs')
+    ax.legend(loc='lower right')
     ax.set_xlabel('Trial Number')
     ax.set_ylabel('Obs./Pred.')
 
@@ -47,21 +47,21 @@ def plot_peri_cp_lr_bars(subj_pcp_lr, snum=0, ax=None):
     ax.set_ylabel('Learning Rate')
 
 
-def plot_pe_update_model_comparison(subj, subj_pe_only, ax=None):
-    """Plot PE vs Update scatter comparing normative and PE-only models.
+def plot_pe_update_model_comparison(subj_pe, subj_cpp, ax=None):
+    """Plot PE vs Update scatter comparing PE-only and CPP-based models.
 
     Parameters:
-        subj (Subject) - Subject with normative model predictions.
-        subj_pe_only (Subject) - Subject with PE-only model predictions.
+        subj_pe (Subject) - Subject with PE-only model (constant learning rate).
+        subj_cpp (Subject) - Subject with CPP-based model (adaptive learning rate).
         ax (matplotlib.axes.Axes) - Axes to plot on. If None, creates new figure.
     """
     if ax is None: fig, ax = plt.subplots()
 
-    # Plot normative predictions
-    ax.plot(subj.responses.pe, subj.responses.update, '.', alpha=0.5, label='Normative')
+    # Plot PE-only model (constant LR = diagonal)
+    ax.plot(subj_pe.responses.pe, subj_pe.responses.update, '.', alpha=0.5, label='PE Only')
 
-    # Plot PE-only predictions
-    ax.plot(subj_pe_only.responses.pe, subj_pe_only.responses.update, '.', alpha=0.5, label='PE Only')
+    # Plot CPP-based model (adaptive LR = varied slope)
+    ax.plot(subj_cpp.responses.pe, subj_cpp.responses.update, '.', alpha=0.5, label='CPP-Based')
 
     ax.set_xlabel('Prediction Error')
     ax.set_ylabel('Update')

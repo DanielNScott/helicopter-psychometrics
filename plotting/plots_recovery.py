@@ -67,7 +67,7 @@ def plot_param_scatter(analysis, param_x, param_y, colors=None, recovered=False,
 
 
 def plot_recovery_summary(analysis, param_names=['beta_cpp', 'beta_ru'], figsize=(10, 8)):
-    """Plot 2x2 grid of parameter recovery diagnostics.
+    """Plot 2x2 grid of parameter recovery diagnostics for two parameters.
 
     Top row: true vs recovered for each parameter.
     Bottom row: true values scatter, recovered values scatter.
@@ -75,7 +75,7 @@ def plot_recovery_summary(analysis, param_names=['beta_cpp', 'beta_ru'], figsize
 
     Parameters:
         analysis (dict) - Output from analyze_recovery.
-        param_names (list) - Two parameter names to plot.
+        param_names (list) - Two parameter names to plot (selects subset if analysis has more).
         figsize (tuple) - Figure size.
 
     Returns:
@@ -244,18 +244,19 @@ def plot_fim_analysis(fim_analysis, err_analysis=None, figsize=(10, 4)):
         scale = np.trace(empirical_cov) / np.trace(predicted_cov)
         predicted_scaled = predicted_cov * scale
 
-        # Plot diagonal and off-diagonal elements
-        labels = ['Var(' + p + ')' for p in param_names] + ['Cov']
-        pred_vals = [predicted_scaled[0, 0], predicted_scaled[1, 1], predicted_scaled[0, 1]]
-        emp_vals = [empirical_cov[0, 0], empirical_cov[1, 1], empirical_cov[0, 1]]
+        # Plot diagonal elements (variances) for each parameter
+        n_params = len(param_names)
+        labels = ['Var(' + p + ')' for p in param_names]
+        pred_vals = [predicted_scaled[i, i] for i in range(n_params)]
+        emp_vals = [empirical_cov[i, i] for i in range(n_params)]
 
         x = np.arange(len(labels))
         axes[2].bar(x - width/2, pred_vals, width, label='FIM predicted')
         axes[2].bar(x + width/2, emp_vals, width, label='Empirical')
         axes[2].set_xticks(x)
         axes[2].set_xticklabels(labels)
-        axes[2].set_ylabel('Covariance')
-        axes[2].set_title('Predicted vs Empirical Error Cov')
+        axes[2].set_ylabel('Variance')
+        axes[2].set_title('Predicted vs Empirical Error Var')
         axes[2].legend()
         axes[2].axhline(0, color='k', linewidth=0.5)
 

@@ -127,7 +127,7 @@ def plot_task_information(fim_df, figsize=(12, 4)):
     """
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
-    metrics = ['condition_number', 'err_sd_max', 'err_sd_min']
+    metrics = ['condition_number', 'err_sd_2', 'err_sd_0']
 
     for ax, metric in zip(axes, metrics):
         sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col=metric, ax=ax)
@@ -163,7 +163,7 @@ def plot_task_information_contours(fim_df, figsize=(12, 4), n_grid=50):
     y_lin = np.linspace(y.min(), y.max(), n_grid)
     x_grid, y_grid = np.meshgrid(x_lin, y_lin)
 
-    metrics = ['condition_number', 'err_sd_max', 'err_sd_min']
+    metrics = ['condition_number', 'err_sd_2', 'err_sd_0']
     labels = ['Condition Number', 'Max Error SD', 'Min Error SD']
 
     for ax, metric, label in zip(axes, metrics, labels):
@@ -217,7 +217,7 @@ def plot_task_information_kernel(fim_df, figsize=(12, 4), n_grid=50, bandwidth=N
         n = len(x)
         bandwidth = n**(-1/6) * (np.std(x) + np.std(y)) / 2
 
-    metrics = ['condition_number', 'err_sd_max', 'err_sd_min']
+    metrics = ['condition_number', 'err_sd_2', 'err_sd_0']
     labels = ['Condition Number', 'Max Error SD', 'Min Error SD']
 
     for ax, metric, label in zip(axes, metrics, labels):
