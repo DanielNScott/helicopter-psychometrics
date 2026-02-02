@@ -68,7 +68,7 @@ def plot_pe_update_model_comparison(subj_pe, subj_cpp, ax=None):
     ax.legend()
 
 
-def plot_subj_betas_strip(betas, model='m4', ax=None):
+def plot_subj_betas_strip(betas, model='model-pe-cpp-ru-prod-deltas', ax=None):
     """Plot strip plot of subject beta coefficients with normative reference.
 
     Parameters:
@@ -78,19 +78,9 @@ def plot_subj_betas_strip(betas, model='m4', ax=None):
     """
     if ax is None: fig, ax = plt.subplots()
 
-    # Define labels based on model
-    if model == 'm4':
-        labels = ['Int.', 'PE', 'CPP', 'RU']
-        cols = [f'{model}_beta_c', f'{model}_beta_pe', f'{model}_beta_cppd', f'{model}_beta_rud']
-    elif model == 'n1':
-        labels = ['Int.', 'CPP', 'RU', 'Joint']
-        cols = [f'{model}_beta_c', f'{model}_beta_cpp', f'{model}_beta_ru', f'{model}_beta_prod']
-    else:
-        raise ValueError(f"Unknown model: {model}")
-
-    # Filter to existing columns
-    cols = [c for c in cols if c in betas.columns]
-    labels = labels[:len(cols)]
+    # Auto-detect beta columns for this model
+    cols = [c for c in betas.columns if c.startswith(f'{model}_beta_')]
+    labels = [c.split('_beta_')[-1].upper() for c in cols]
 
     nsubj = len(betas)
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -130,7 +120,7 @@ def plot_lm_ve(subjs, ax=None):
 
     from analysis.analysis import fit_linear_models
 
-    models = ['m0', 'm1', 'm2']
+    models = ['model-pe', 'model-pe-cpp', 'model-pe-cpp-ru']
     labels = ['pe', 'pe-cpp', 'pe-cpp-ru']
 
     # Get variance explained by each model

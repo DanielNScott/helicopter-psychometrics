@@ -15,7 +15,7 @@ def recovery_analysis(use_cache=USE_CACHE):
     # Check for results to load if cache flag
     if use_cache:
         try:
-            results = load_recovery('n0_recovery')
+            results = load_recovery('model-pe-cpp-ru_recovery')
         except FileNotFoundError:
             print("No cached recovery results found; running new recovery.")
             use_cache = False
@@ -38,10 +38,49 @@ def recovery_analysis(use_cache=USE_CACHE):
             blocks=blocks,
             fit_method='ols',
         )
-        save_recovery(results, 'n0_recovery')
+        save_recovery(results, 'model-pe-cpp-ru_recovery')
 
     # Analyze recovery results
     err_analysis = analyze_error_covariance(results['true_params'], results['results'])
     fim_df       = analyze_task_information(results['subjects']    , results['tasks'])
-    
+
     return results, err_analysis, fim_df
+
+
+def recovery_analysis_high_pe(use_cache=USE_CACHE):
+    """Recovery analysis with beta_pe in [0.8, 0.98]."""
+
+    # Check for results to load if cache flag
+    if use_cache:
+        try:
+            results = load_recovery('model-pe-cpp-ru_recovery_high-pe')
+        except FileNotFoundError:
+            print("No cached high-pe recovery results found; running new recovery.")
+            use_cache = False
+
+    # No results or cache off, compute recovery params
+    if not use_cache:
+        blocks = [
+            {'ntrials': 120, 'noise_sd': 10},
+            {'ntrials': 120, 'noise_sd': 25},
+            {'ntrials': 120, 'noise_sd': 10},
+            {'ntrials': 120, 'noise_sd': 25},
+        ]
+
+        results = parameter_recovery(
+            param_names=['beta_pe', 'beta_cpp', 'beta_ru'],
+            param_ranges={
+                'beta_pe':  (0.8, 0.98),
+                'beta_cpp': (0.0, 1.0),
+                'beta_ru':  (0.0, 1.0),
+            },
+            n_subjects=400,
+            n_tasks_per_subject=5,
+            n_reps=5,
+            n_refits=1,
+            blocks=blocks,
+            fit_method='ols',
+        )
+        save_recovery(results, 'model-pe-cpp-ru_recovery_high-pe')
+
+    return results

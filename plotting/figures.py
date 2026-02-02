@@ -158,9 +158,9 @@ def figure_2(tasks, subj_pcp_lr, group_pca_basis, subj_pca_lr_scores, subj_linea
     # --- Panel C: Correlation matrix between PC scores and betas ---
     # Build correlation matrix
     score_cols = [c for c in subj_pca_lr_scores.columns if c.startswith('Score_')][:2]
-    beta_cols = ['m4_beta_pe', 'm4_beta_cppd', 'm4_beta_rud', 'm4_beta_prodd']
-
-    # Check which beta columns exist
+    lm_model = 'model-pe-cpp-ru-prod-deltas'
+    lm_terms = get_model_terms(lm_model)
+    beta_cols = [f'{lm_model}_beta_{t}' for t in lm_terms]
     beta_cols = [c for c in beta_cols if c in subj_linear_models.columns]
 
     # Combine into single dataframe for correlation
@@ -170,7 +170,7 @@ def figure_2(tasks, subj_pcp_lr, group_pca_basis, subj_pca_lr_scores, subj_linea
     ], axis=1)
 
     # Rename for display
-    corr_data.columns = ['PC1', 'PC2'] + [c.replace('m4_beta_', '').upper() for c in beta_cols]
+    corr_data.columns = ['PC1', 'PC2'] + [t.upper() for t in lm_terms[:len(beta_cols)]]
 
     # Compute Spearman correlation matrix
     corr_matrix = corr_data.corr(method='spearman')
@@ -254,7 +254,7 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
 
     # --- Panel B: Beta strip plots ---
     fig, ax = plt.subplots()
-    plot_subj_betas_strip(subj_linear_models, model='m4', ax=ax)
+    plot_subj_betas_strip(subj_linear_models, model='model-pe-cpp-ru-prod-deltas', ax=ax)
     ax.set_title('Subject Beta Coefficients')
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig3_B' + FIG_FMT, dpi=300)
@@ -596,6 +596,88 @@ def compile_figure_4(cleanup=FIG_CLEANUP):
             if os.path.exists(f): os.remove(f)
 
 
+def figure_6(recovery_results, savefig=True, close=True):
+    """Generate Figure 6: Recovery SD as a function of beta_pe.
+
+    Figure 6 layout:
+        Row 1: [A] SD(beta_pe) vs beta_pe, [B] SD(beta_cpp) vs beta_pe, [C] SD(beta_ru) vs beta_pe
+        Row 2: [D] Heatmap beta_pe,         [E] Heatmap beta_cpp,         [F] Heatmap beta_ru
+
+    Parameters:
+        recovery_results (dict) - Output from parameter_recovery (with 'results', 'true_params').
+        savefig (bool)          - Whether to save individual panel figures.
+        close (bool)            - Whether to close figures after saving.
+    """
+    from plotting.plots_recovery import plot_recovery_sd_by_param, plot_recovery_sd_heatmap
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    results = recovery_results['results']
+    true_params = recovery_results['true_params']
+    param_names = results['param_names']
+    params = ['beta_pe', 'beta_cpp', 'beta_ru']
+    panel_labels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+    # Row 1: line plots
+    for i, p in enumerate(params):
+        fig, ax = plt.subplots()
+        plot_recovery_sd_by_param(results, true_params, param_names, y_param=p, ax=ax)
+        fig.tight_layout()
+        if savefig: fig.savefig(FIGURES_DIR + f'fig6_{panel_labels[i]}' + FIG_FMT, dpi=300)
+
+    # Row 2: heatmaps
+    for i, p in enumerate(params):
+        fig, ax = plt.subplots()
+        im = plot_recovery_sd_heatmap(results, true_params, param_names, y_param=p, ax=ax)
+        fig.colorbar(im, ax=ax, label='SD')
+        fig.tight_layout()
+        if savefig: fig.savefig(FIGURES_DIR + f'fig6_{panel_labels[i + 3]}' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def figure_7(recovery_results, savefig=True, close=True):
+    """Generate Figure 7: Recovery SD as a function of beta_pe (high beta_pe range).
+
+    Same layout as Figure 6, but for beta_pe in [0.8, 0.98].
+
+    Figure 7 layout:
+        Row 1: [A] SD(beta_pe) vs beta_pe, [B] SD(beta_cpp) vs beta_pe, [C] SD(beta_ru) vs beta_pe
+        Row 2: [D] Heatmap beta_pe,         [E] Heatmap beta_cpp,         [F] Heatmap beta_ru
+
+    Parameters:
+        recovery_results (dict) - Output from parameter_recovery (with 'results', 'true_params').
+        savefig (bool)          - Whether to save individual panel figures.
+        close (bool)            - Whether to close figures after saving.
+    """
+    from plotting.plots_recovery import plot_recovery_sd_by_param, plot_recovery_sd_heatmap
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    results = recovery_results['results']
+    true_params = recovery_results['true_params']
+    param_names = results['param_names']
+    params = ['beta_pe', 'beta_cpp', 'beta_ru']
+    panel_labels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+    # Row 1: line plots
+    for i, p in enumerate(params):
+        fig, ax = plt.subplots()
+        plot_recovery_sd_by_param(results, true_params, param_names, y_param=p, ax=ax)
+        fig.tight_layout()
+        if savefig: fig.savefig(FIGURES_DIR + f'fig7_{panel_labels[i]}' + FIG_FMT, dpi=300)
+
+    # Row 2: heatmaps
+    for i, p in enumerate(params):
+        fig, ax = plt.subplots()
+        im = plot_recovery_sd_heatmap(results, true_params, param_names, y_param=p, ax=ax)
+        fig.colorbar(im, ax=ax, label='SD')
+        fig.tight_layout()
+        if savefig: fig.savefig(FIGURES_DIR + f'fig7_{panel_labels[i + 3]}' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
 def compile_figure_5(cleanup=FIG_CLEANUP):
     """Compile Figure 5 from individual panels.
 
@@ -619,6 +701,124 @@ def compile_figure_5(cleanup=FIG_CLEANUP):
     combined = FIGURES_DIR + 'fig5_combined.svg'
     labeled = FIGURES_DIR + 'fig5_labeled.svg'
     final = FIGURES_DIR + 'fig5_final.svg'
+
+    # Build row 1: A + B + C
+    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
+    combine_svgs_horizontal(row1_ab, panel_c, row1)
+
+    # Build row 2: D + E + F
+    combine_svgs_horizontal(panel_d, panel_e, row2_de)
+    combine_svgs_horizontal(row2_de, panel_f, row2)
+
+    # Combine rows vertically
+    combine_svgs_vertical(row1, row2, combined)
+
+    # Add panel labels
+    pw = 460.8  # panel width
+    ph = 345.6  # panel height
+    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'F', x=2*pw+10, y=ph+20, font_size=14)
+
+    # Scale to final width
+    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
+
+    # Convert to PDF
+    svg_to_pdf(final, final.replace('.svg', '.pdf'))
+
+    # Clean up intermediate and panel files
+    if cleanup:
+        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e, panel_f]
+        intermediate_files = [row1_ab, row1, row2_de, row2, combined, labeled]
+        for f in panel_files + intermediate_files:
+            if os.path.exists(f): os.remove(f)
+
+
+def compile_figure_6(cleanup=FIG_CLEANUP):
+    """Compile Figure 6 from individual panels.
+
+    Layout:
+        Row 1: [A] [B] [C]  (recovery SD line plots)
+        Row 2: [D] [E] [F]  (recovery SD heatmaps)
+    """
+    # Input panel files
+    panel_a = FIGURES_DIR + 'fig6_A' + FIG_FMT
+    panel_b = FIGURES_DIR + 'fig6_B' + FIG_FMT
+    panel_c = FIGURES_DIR + 'fig6_C' + FIG_FMT
+    panel_d = FIGURES_DIR + 'fig6_D' + FIG_FMT
+    panel_e = FIGURES_DIR + 'fig6_E' + FIG_FMT
+    panel_f = FIGURES_DIR + 'fig6_F' + FIG_FMT
+
+    # Intermediate files
+    row1_ab = FIGURES_DIR + 'fig6_row1_ab.svg'
+    row1 = FIGURES_DIR + 'fig6_row1.svg'
+    row2_de = FIGURES_DIR + 'fig6_row2_de.svg'
+    row2 = FIGURES_DIR + 'fig6_row2.svg'
+    combined = FIGURES_DIR + 'fig6_combined.svg'
+    labeled = FIGURES_DIR + 'fig6_labeled.svg'
+    final = FIGURES_DIR + 'fig6_final.svg'
+
+    # Build row 1: A + B + C
+    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
+    combine_svgs_horizontal(row1_ab, panel_c, row1)
+
+    # Build row 2: D + E + F
+    combine_svgs_horizontal(panel_d, panel_e, row2_de)
+    combine_svgs_horizontal(row2_de, panel_f, row2)
+
+    # Combine rows vertically
+    combine_svgs_vertical(row1, row2, combined)
+
+    # Add panel labels
+    pw = 460.8  # panel width
+    ph = 345.6  # panel height
+    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'F', x=2*pw+10, y=ph+20, font_size=14)
+
+    # Scale to final width
+    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
+
+    # Convert to PDF
+    svg_to_pdf(final, final.replace('.svg', '.pdf'))
+
+    # Clean up intermediate and panel files
+    if cleanup:
+        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e, panel_f]
+        intermediate_files = [row1_ab, row1, row2_de, row2, combined, labeled]
+        for f in panel_files + intermediate_files:
+            if os.path.exists(f): os.remove(f)
+
+
+def compile_figure_7(cleanup=FIG_CLEANUP):
+    """Compile Figure 7 from individual panels.
+
+    Layout:
+        Row 1: [A] [B] [C]  (recovery SD line plots, high beta_pe)
+        Row 2: [D] [E] [F]  (recovery SD heatmaps, high beta_pe)
+    """
+    # Input panel files
+    panel_a = FIGURES_DIR + 'fig7_A' + FIG_FMT
+    panel_b = FIGURES_DIR + 'fig7_B' + FIG_FMT
+    panel_c = FIGURES_DIR + 'fig7_C' + FIG_FMT
+    panel_d = FIGURES_DIR + 'fig7_D' + FIG_FMT
+    panel_e = FIGURES_DIR + 'fig7_E' + FIG_FMT
+    panel_f = FIGURES_DIR + 'fig7_F' + FIG_FMT
+
+    # Intermediate files
+    row1_ab = FIGURES_DIR + 'fig7_row1_ab.svg'
+    row1 = FIGURES_DIR + 'fig7_row1.svg'
+    row2_de = FIGURES_DIR + 'fig7_row2_de.svg'
+    row2 = FIGURES_DIR + 'fig7_row2.svg'
+    combined = FIGURES_DIR + 'fig7_combined.svg'
+    labeled = FIGURES_DIR + 'fig7_labeled.svg'
+    final = FIGURES_DIR + 'fig7_final.svg'
 
     # Build row 1: A + B + C
     combine_svgs_horizontal(panel_a, panel_b, row1_ab)

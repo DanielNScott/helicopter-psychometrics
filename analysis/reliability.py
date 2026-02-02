@@ -51,7 +51,7 @@ def _analysis_pca(subjs_a, subjs_b, tasks_a, tasks_b):
     return {'Rho Score 0': pca_corrs[0], 'Rho Score 1': pca_corrs[1], 'Rho Score 2': pca_corrs[2]}
 
 
-def _analysis_regression(subjs_a, subjs_b, tasks_a, tasks_b, model='n0'):
+def _analysis_regression(subjs_a, subjs_b, tasks_a, tasks_b, model='model-pe-cpp-ru'):
     """Compute regression coefficient correlations between two splits."""
 
     # Fit models
@@ -75,7 +75,7 @@ def do_split_half_analysis(subjs, tasks, nreps=20):
     def analysis_fn(subjs_a, subjs_b, tasks_a, tasks_b):
         results = {}
         results.update(       _analysis_pca(subjs_a, subjs_b, tasks_a, tasks_b))
-        results.update(_analysis_regression(subjs_a, subjs_b, tasks_a, tasks_b, model='n0'))
+        results.update(_analysis_regression(subjs_a, subjs_b, tasks_a, tasks_b, model='model-pe-cpp-ru'))
         return results
     
     # Run split-half reliability analysis

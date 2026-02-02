@@ -63,59 +63,98 @@ def get_peri_cp_stats(subjs, tasks, endpoint=4):
     return subj_pcp_lr, subj_pcp_cpp, subj_pcp_ru
 
 
-def fit_linear_models(subjs, model='full'):
+def get_model_terms(model):
+    """Return regressor term names for a linear model (excludes intercept).
+
+    Parameters:
+        model (str) - Model name
+
+    Returns:
+        list of short term names, e.g. ['pe', 'cpp', 'ru']
+    """
+    all_terms = {
+        'model-pe':                    ['pe'],
+        'model-pe-cpp':                ['pe', 'cpp'],
+        'model-pe-cpp-ru':             ['pe', 'cpp', 'ru'],
+        'model-pe-cpp-ru-prod':        ['pe', 'cpp', 'ru', 'prod'],
+        'model-pe-cpp-ru-deltas':      ['pe', 'cpp', 'ru'],
+        'model-pe-cpp-ru-prod-deltas': ['pe', 'cpp', 'ru', 'prod'],
+    }
+    if model not in all_terms:
+        raise ValueError(f"Unknown model: {model}")
+    return all_terms[model]
+
+
+def terms_to_params(terms):
+    """Map short regressor term names to beta-prefixed parameter names.
+
+    Parameters:
+        terms (list) - Short term names, e.g. ['pe', 'cpp', 'ru']
+
+    Returns:
+        list of parameter names, e.g. ['beta_pe', 'beta_cpp', 'beta_ru']
+    """
+    return [f'beta_{t}' for t in terms]
+
+
+def build_design_matrix(pe, cpp, ru, model):
+    """Build design matrix and term names for a linear model of update behavior.
+
+    Parameters:
+        pe (array)   - Prediction errors
+        cpp (array)  - Changepoint probability
+        ru (array)   - Relative uncertainty
+        model (str)  - Model name
+
+    Returns:
+        design (ndarray) - Design matrix (n_trials x n_terms)
+        terms (list)     - Term name for each column
+    """
+    const = np.ones(len(pe))
+    dcpp = cpp - np.nanmean(cpp)
+    dru  = ru  - np.nanmean(ru)
+
+    match model:
+        case 'model-pe':
+            design = np.column_stack([const, pe])
+            terms = ['c', 'pe']
+        case 'model-pe-cpp':
+            design = np.column_stack([const, pe, pe*cpp])
+            terms = ['c', 'pe', 'cpp']
+        case 'model-pe-cpp-ru':
+            design = np.column_stack([const, pe, pe*cpp, pe*ru*(1-cpp)])
+            terms = ['c', 'pe', 'cpp', 'ru']
+        case 'model-pe-cpp-ru-prod':
+            design = np.column_stack([const, pe, pe*cpp, pe*ru, pe*cpp*ru])
+            terms = ['c', 'pe', 'cpp', 'ru', 'prod']
+        case 'model-pe-cpp-ru-deltas':
+            design = np.column_stack([const, pe, pe*dcpp, pe*dru*(1-dcpp)])
+            terms = ['c', 'pe', 'cpp', 'ru']
+        case 'model-pe-cpp-ru-prod-deltas':
+            design = np.column_stack([const, pe, pe*dcpp, pe*dru, pe*dcpp*dru])
+            terms = ['c', 'pe', 'cpp', 'ru', 'prod']
+        case _:
+            raise ValueError(f"Unknown model: {model}")
+
+    return design, terms
+
+
+def fit_linear_models(subjs, model='model-prod'):
     """Fit linear models to each subject's data and return DataFrame with betas, VIFs, and variance explained.
 
     Returns:
         pd.DataFrame with subjects as rows and columns for each beta, vif, and model ve.
     """
-
-    # Define term names for each model type
-    term_names = {
-        'm0': ['c', 'pe'],
-        'm1': ['c', 'pe', 'cpp'],
-        'm2': ['c', 'pe', 'cpp', 'ru'],
-        'm3': ['c', 'pe', 'cpp', 'ru', 'prod'],
-        'm4': ['c', 'pe', 'cppd', 'rud', 'prodd'],
-        'n0': ['c', 'cpp', 'prod'],
-        'n1': ['c', 'cpp', 'ru', 'prod'],
-    }
-
-    terms = term_names[model]
     rows = []
 
     for subj in subjs:
 
-        # Aliases to simplify code
+        # Build design matrix
         pe  = subj.responses.pe
         up  = subj.responses.update
         cpp = subj.beliefs.cpp
-        ru = subj.beliefs.relunc
-
-        # Define deviation variables
-        dcpp = cpp - np.nanmean(cpp)
-        dru = ru - np.nanmean(ru)
-
-        # Define intercept for design matrices
-        const = np.ones(len(pe))
-
-        # Design matrices
-
-        match model:
-            case 'm0':
-                design = np.vstack([const, pe]).T
-            case 'm1':
-                design = np.vstack([const, pe, pe*cpp]).T
-            case 'm2':
-                design = np.vstack([const, pe, pe*cpp, pe*ru]).T
-            case 'm3':
-                design = np.vstack([const, pe, pe*cpp, pe*ru, pe*cpp*ru]).T
-            case 'm4':
-                design = np.vstack([const, pe, pe*dcpp, pe*dru, pe*dcpp*dru]).T
-            case 'n0':
-                design = np.vstack([const, pe*cpp, pe*ru*(1-cpp)]).T
-            case 'n1':
-                design = np.vstack([const, pe*cpp, pe*ru, pe*cpp*ru]).T
+        ru  = subj.beliefs.relunc
+        design, terms = build_design_matrix(pe, cpp, ru, model)
 
         # Fit model
         results = sm.OLS(up, design).fit()
@@ -236,12 +275,12 @@ def get_subj_pca_ve(subj_pcp_lr, group_pca_basis, subj_pca_scores):
 def get_lm_cumulative_ve(subjs):
     """Compute cumulative variance explained by nested linear models.
 
-    Fits models m0 (pe), m1 (pe+cpp), m2 (pe+cpp+ru) and returns mean VE across subjects.
+    Fits nested models (pe, pe+cpp, pe+cpp+ru) and returns mean VE across subjects.
 
     Returns:
         array of length 3 with mean VE for each model level.
     """
-    models = ['m0', 'm1', 'm2']
+    models = ['model-pe', 'model-pe-cpp', 'model-pe-cpp-ru']
     cumulative_ve = np.zeros(len(models))
 
     for i, model in enumerate(models):

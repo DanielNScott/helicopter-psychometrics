@@ -10,7 +10,7 @@ from configs import *
 from changepoint.subjects import Subject, simulate_subject, get_beliefs, DEFAULT_PARAMS_SUBJ
 from changepoint.tasks import simulate_cpt
 from changepoint.multiproc import generate_tasks_parallel, simulate_subjects_parallel
-from analysis.analysis import fit_linear_models
+from analysis.analysis import fit_linear_models, build_design_matrix, get_model_terms, terms_to_params
 
 import scipy.optimize as opt
 from scipy.stats import norm
@@ -229,11 +229,9 @@ def get_param_guess(opt_param_names):
     return np.array(guesses)
 
 
-def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
+def fit_single_ols(subj, task, opt_param_names, fixed_params=None, model='model-pe-cpp-ru'):
     """
     Fit beta parameters for a single subject-task combination using OLS.
-
-    Fits the model: update = c + beta_pe*pe + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
 
     Beliefs (cpp, ru) are re-inferred using default parameters, matching
     how real subject data would be processed.
@@ -241,8 +239,9 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     Parameters:
         subj (Subject)        - Subject with responses
         task (ChangepointTask)- Task data (for noise_sd, hazard, new_blk)
-        opt_param_names (list)- Subset of ['beta_pe', 'beta_cpp', 'beta_ru']
+        opt_param_names (list)- Parameter names to extract (beta_ prefixed)
         fixed_params (dict)   - Fixed parameter values (unused, for interface compatibility)
+        model (str)           - Model name matching fit_linear_models
 
     Returns:
         estimates (array) - Fitted parameter values in order of opt_param_names
@@ -250,29 +249,26 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
     """
     import statsmodels.api as sm
 
-    # Validate parameters
-    valid_params = {'beta_pe', 'beta_cpp', 'beta_ru'}
-    invalid = set(opt_param_names) - valid_params
-    if invalid:
-        raise ValueError(f"OLS fitting only supports {valid_params}. Invalid: {invalid}")
-
     # Re-infer beliefs using default parameters (as we would for real data)
     noise_sd = task.noise_sd if not np.isscalar(task.noise_sd) else np.full(len(task.obs), task.noise_sd)
     subj.beliefs = get_beliefs(subj.responses, task.obs, task.new_blk, task.hazard, noise_sd)
 
-    # Build design matrix for full model: update = c + beta_pe*pe + beta_cpp*pe*cpp + beta_ru*pe*ru*(1-cpp)
-    pe = subj.responses.pe
-    up = subj.responses.update
+    # Build design matrix
+    pe  = subj.responses.pe
+    up  = subj.responses.update
     cpp = subj.beliefs.cpp
-    ru = subj.beliefs.relunc
+    ru  = subj.beliefs.relunc
+    design, short_terms = build_design_matrix(pe, cpp, ru, model)
 
-    const = np.ones(len(pe))
-    X_pe = pe
-    X_cpp = pe * cpp
-    X_ru = pe * ru * (1 - cpp)
+    # Map short term names to beta-prefixed parameter names
+    # short_terms includes intercept 'c'; strip it for terms_to_params, then prepend
+    term_names = ['c'] + terms_to_params(short_terms[1:])
 
-    design = np.column_stack([const, X_pe, X_cpp, X_ru])
-    term_names = ['c', 'beta_pe', 'beta_cpp', 'beta_ru']
+    # Validate requested params exist in this model
+    valid_params = set(term_names)
+    invalid = set(opt_param_names) - valid_params
+    if invalid:
+        raise ValueError(f"Model {model} has params {valid_params}. Invalid: {invalid}")
 
     # Fit model
     results = sm.OLS(up, design).fit()
@@ -283,13 +279,12 @@ def fit_single_ols(subj, task, opt_param_names, fixed_params=None):
         idx = term_names.index(name)
         estimates.append(results.params[idx])
 
-    # Compute SSE
     sse = results.ssr
-
     return np.array(estimates), sse
 
 
-def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None, fit_method='mle'):
+def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None,
+               fit_method='mle', model='model-pe-cpp-ru'):
     """
     Fit parameters for a single subject-task combination.
 
@@ -300,13 +295,14 @@ def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None, fit_me
         fixed_params (dict)   - Fixed parameter values
         seed (int)            - Random seed for MLE initialization
         fit_method (str)      - 'mle' for maximum likelihood, 'ols' for ordinary least squares
+        model (str)           - Model name for OLS fitting
 
     Returns:
         estimates (array) - Fitted parameter values
         score (float)     - Negative log-likelihood (MLE) or sum of squared errors (OLS)
     """
     if fit_method == 'ols':
-        return fit_single_ols(subj, task, opt_param_names, fixed_params)
+        return fit_single_ols(subj, task, opt_param_names, fixed_params, model=model)
 
     # MLE fitting
     if seed is not None:
@@ -330,13 +326,14 @@ def fit_single(subj, task, opt_param_names, fixed_params=None, seed=None, fit_me
 # Global for worker initialization
 _worker_config = None
 
-def _init_worker(opt_param_names, fixed_params, fit_method):
+def _init_worker(opt_param_names, fixed_params, fit_method, model='model-pe-cpp-ru'):
     """Initialize worker process with shared configuration."""
     global _worker_config
     _worker_config = {
         'opt_param_names': opt_param_names,
         'fixed_params': fixed_params,
         'fit_method': fit_method,
+        'model': model,
     }
 
 
@@ -352,6 +349,7 @@ def _worker_fit_job(args):
             _worker_config['fixed_params'],
             seed,
             _worker_config['fit_method'],
+            _worker_config['model'],
         )
         return {'success': True, 'estimates': estimates, 'score': score, 'idx': job_idx}
     except Exception as e:
@@ -359,7 +357,7 @@ def _worker_fit_job(args):
 
 
 def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=None,
-                   fixed_params=None, fit_method='mle'):
+                   fixed_params=None, fit_method='mle', model='model-pe-cpp-ru'):
     """
     Fit parameters for multiple subjects with multiprocessing.
 
@@ -418,7 +416,7 @@ def fit_parameters(subjects, tasks, opt_param_names, n_refits=5, n_processes=Non
     report_interval = max(1, n_jobs // 20)  # Report ~20 times
 
     with mp.Pool(processes=n_processes, initializer=_init_worker,
-                 initargs=(opt_param_names, fixed_params, fit_method)) as pool:
+                 initargs=(opt_param_names, fixed_params, fit_method, model)) as pool:
 
         for i, result in enumerate(pool.imap_unordered(_worker_fit_job, jobs)):
             results_list[result['idx']] = result
@@ -498,6 +496,11 @@ def analyze_recovery(true_params, results):
 
     analysis = {}
     for p, param_name in enumerate(param_names):
+
+        # Skip params that don't have a generative truth (e.g. beta_prod)
+        if param_name not in true_params:
+            continue
+
         true_vals = true_params[param_name]
         recovered_vals = mean_ests[:, p]
 
@@ -532,7 +535,7 @@ def analyze_recovery(true_params, results):
 
 def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps=3, n_refits=3,
                        param_ranges=None, task_params=None, blocks=None, fixed_params=None,
-                       n_processes=None, fit_method='mle'):
+                       n_processes=None, fit_method='mle', model='model-pe-cpp-ru'):
     """
     Run a complete parameter recovery study.
 
@@ -568,7 +571,8 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
     # Fit parameters
     n_fits = n_subjects * n_tasks_per_subject * n_reps * n_refits
     print(f"Fitting parameters {param_names} ({n_fits} total fits, method={fit_method})...")
-    results = fit_parameters(subjects, tasks, param_names, n_refits, n_processes, fixed_params, fit_method)
+    results = fit_parameters(subjects, tasks, param_names, n_refits, n_processes, fixed_params,
+                             fit_method, model)
 
     # Analyze recovery
     analysis = analyze_recovery(true_params, results)
@@ -576,6 +580,8 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
     # Print summary
     print("\nRecovery Summary:")
     for param_name in param_names:
+        if param_name not in analysis:
+            continue
         a = analysis[param_name]
         print(f"  {param_name}: r={a['correlation']:.3f}, bias={a['mean_bias']:.3f}, "
               f"std_fit={np.sqrt(a['var_fit']):.3f}, std_rep={np.sqrt(a['var_rep']):.3f}, "
@@ -595,61 +601,9 @@ def parameter_recovery(param_names, n_subjects=10, n_tasks_per_subject=5, n_reps
             'n_refits': n_refits,
             'param_ranges': param_ranges,
             'fit_method': fit_method,
+            'model': model,
         }
     }
-
-
-def verify_block_recovery():
-    """
-    Verify parameter recovery with block-structured tasks.
-
-    Uses 4 blocks of 120 trials each with noise_sd alternating between 10 and 25.
-    Fits mix parameter for 10 subjects using MLE.
-    """
-    blocks = [
-        {'ntrials': 120, 'noise_sd': 10},
-        {'ntrials': 120, 'noise_sd': 25},
-        {'ntrials': 120, 'noise_sd': 10},
-        {'ntrials': 120, 'noise_sd': 25},
-    ]
-
-    result = parameter_recovery(
-        param_names=['mix'],
-        n_subjects=10,
-        n_tasks_per_subject=5,
-        n_reps=5,
-        n_refits=1,
-        blocks=blocks,
-    )
-
-    return result
-
-
-def verify_ols_recovery(params=['beta_cpp', 'beta_ru'], n_subjects=100, n_tasks_per_subject=5, n_reps=5):
-    """
-    Verify OLS recovery of beta_cpp with block-structured tasks.
-
-    Uses 4 blocks of 120 trials each with noise_sd alternating between 10 and 25.
-    Fits beta_cpp for 30 subjects using OLS.
-    """
-    blocks = [
-        {'ntrials': 120, 'noise_sd': 10},
-        {'ntrials': 120, 'noise_sd': 25},
-        {'ntrials': 120, 'noise_sd': 10},
-        {'ntrials': 120, 'noise_sd': 25},
-    ]
-
-    result = parameter_recovery(
-        param_names=params,
-        n_subjects=n_subjects,
-        n_tasks_per_subject=n_tasks_per_subject,
-        n_reps=n_reps,
-        n_refits=1,
-        blocks=blocks,
-        fit_method='ols',
-    )
-
-    return result
 
 def save_recovery(result, filename='recovery'):
     """Save parameter recovery result to timestamped pickle file.

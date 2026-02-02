@@ -264,6 +264,119 @@ def plot_fim_analysis(fim_analysis, err_analysis=None, figsize=(10, 4)):
     return fig, axes
 
 
+def _recovery_sd_per_subject(results):
+    """Compute per-subject recovery SD over tasks and reps.
+
+    Parameters:
+        results (dict) - Output from fit_parameters with 'ests' key.
+
+    Returns:
+        sd (ndarray) - Shape [n_subjects, n_params].
+    """
+    # ests shape: [n_subj, n_tasks, n_reps, n_refits, n_params]
+    ests = results['ests'][:, :, :, 0, :]
+    return np.nanstd(ests, axis=(1, 2))
+
+
+def plot_recovery_sd_by_param(results, true_params, param_names, y_param,
+                              x_param='beta_pe', n_bins=15, ax=None):
+    """Plot recovery SD of y_param as a function of true x_param.
+
+    SD is computed per subject over tasks/reps, then averaged within
+    bins of true x_param (marginalizing over y_param's true value).
+
+    Parameters:
+        results (dict)     - Output from fit_parameters.
+        true_params (dict) - {param_name: array of true values per subject}.
+        param_names (list) - Ordered parameter names matching results columns.
+        y_param (str)      - Parameter whose recovery SD to plot.
+        x_param (str)      - Parameter for x-axis binning.
+        n_bins (int)       - Number of bins along x-axis.
+        ax (Axes)          - Axes to plot on. If None, creates new figure.
+    """
+    if ax is None: fig, ax = plt.subplots()
+
+    sd = _recovery_sd_per_subject(results)
+    p_idx = param_names.index(y_param)
+    x_vals = true_params[x_param]
+
+    # Bin by x_param and average SD within each bin
+    bin_edges = np.linspace(x_vals.min(), x_vals.max(), n_bins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    bin_means = np.full(n_bins, np.nan)
+
+    for b in range(n_bins):
+        msk = (x_vals >= bin_edges[b]) & (x_vals < bin_edges[b + 1])
+        if b == n_bins - 1:
+            msk |= (x_vals == bin_edges[b + 1])
+        if msk.sum() > 0:
+            bin_means[b] = np.nanmean(sd[msk, p_idx])
+
+    ax.plot(bin_centers, bin_means, 'o-')
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel(f'True {x_param}')
+    ax.set_ylabel(f'SD(recovered {y_param})')
+    ax.set_title(f'Recovery SD: {y_param}')
+    ax.grid(alpha=0.3)
+
+
+def plot_recovery_sd_heatmap(results, true_params, param_names, y_param,
+                             x_param='beta_pe', n_bins=15, ax=None):
+    """Plot heatmap of recovery SD for y_param, binned by x_param and y_param true values.
+
+    Parameters:
+        results (dict)     - Output from fit_parameters.
+        true_params (dict) - {param_name: array of true values per subject}.
+        param_names (list) - Ordered parameter names matching results columns.
+        y_param (str)      - Parameter whose recovery SD to plot and bin on y-axis.
+        x_param (str)      - Parameter for x-axis binning.
+        n_bins (int)       - Number of bins per axis.
+        ax (Axes)          - Axes to plot on. If None, creates new figure.
+
+    Returns:
+        im - Image object for colorbar.
+    """
+    if ax is None: fig, ax = plt.subplots()
+
+    sd = _recovery_sd_per_subject(results)
+    p_idx = param_names.index(y_param)
+    x_vals = true_params[x_param]
+    y_vals = true_params[y_param]
+
+    # Bin edges for both axes
+    x_edges = np.linspace(x_vals.min(), x_vals.max(), n_bins + 1)
+    y_edges = np.linspace(y_vals.min(), y_vals.max(), n_bins + 1)
+    grid = np.full((n_bins, n_bins), np.nan)
+
+    # Fill grid with mean SD per bin
+    for bx in range(n_bins):
+        for by in range(n_bins):
+            mx = (x_vals >= x_edges[bx]) & (x_vals < x_edges[bx + 1])
+            my = (y_vals >= y_edges[by]) & (y_vals < y_edges[by + 1])
+
+            # Include right edge in last bin
+            if bx == n_bins - 1:
+                mx |= (x_vals == x_edges[bx + 1])
+            if by == n_bins - 1:
+                my |= (y_vals == y_edges[by + 1])
+
+            msk = mx & my
+            if msk.sum() > 0:
+                grid[by, bx] = np.nanmean(sd[msk, p_idx])
+
+    # Plot with axis labels at bin centers
+    x_centers = 0.5 * (x_edges[:-1] + x_edges[1:])
+    y_centers = 0.5 * (y_edges[:-1] + y_edges[1:])
+    im = ax.imshow(grid, origin='lower', aspect='auto', cmap='cividis', vmin=0,
+                   extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]])
+
+    ax.set_xlabel(f'True {x_param}')
+    ax.set_ylabel(f'True {y_param}')
+    ax.set_title(f'Recovery SD: {y_param}')
+
+    return im
+
+
 def plot_variance_decomposition(analysis, ax=None):
     """Plot recovery error breakdown by source (task vs repetition variability).
 

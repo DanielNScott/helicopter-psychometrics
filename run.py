@@ -10,18 +10,18 @@ from analysis.analysis import *
 from analysis.reliability import *
 from estimation.mle import *
 from estimation.fim import *
-from estimation.main import recovery_analysis
+from estimation.main import recovery_analysis, recovery_analysis_high_pe
 from plotting.figures import *
 
 # Settings
-create_figures = [5] #[1,2,3,4,5]
+create_figures = [7] #[1,2,3,4,5]
 run_recovery = True
 
 # Read experimental data
 subjs, tasks = read_experiment(max_subj=MAX_SUBJ_NUM)
 
 # Fit linear models to subjects
-subj_linear_models = fit_linear_models(subjs, model='m4')
+subj_linear_models = fit_linear_models(subjs, model='model-pe-cpp-ru-prod-deltas')
 
 # Get peri-cp statistics
 subj_pcp_lr, subj_pcp_cpp, subj_pcp_ru = get_peri_cp_stats(subjs, tasks)
@@ -59,3 +59,14 @@ if 4 in create_figures:
 if 5 in create_figures:
     figure_5(err_analysis, fim_df, recovery['analysis'])
     compile_figure_5()
+
+# Figure 6
+if 6 in create_figures:
+    figure_6(recovery)
+    compile_figure_6()
+
+# Figure 7: high beta_pe recovery
+if 7 in create_figures:
+    recovery_high_pe = recovery_analysis_high_pe()
+    figure_7(recovery_high_pe)
+    compile_figure_7()
