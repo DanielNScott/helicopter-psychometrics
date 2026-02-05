@@ -9,6 +9,7 @@ from analysis.aggregation import *
 from analysis.analysis import *
 from analysis.reliability import *
 from analysis.comparison import model_comparison_analysis
+from analysis.alternatives import analyze_alternative_models
 from estimation.mle import *
 from estimation.fim import *
 from estimation.main import recovery_analysis, recovery_analysis_high_pe
@@ -39,6 +40,13 @@ recovery, err_analysis, fim_df = recovery_analysis()
 
 # Run model comparison analysis
 comparison = model_comparison_analysis(subjs, tasks)
+
+# Recover the high-beta_pe regime
+# recovery_high_pe = recovery_analysis_high_pe()
+
+# Run alternative model analysis
+alt_analysis = analyze_alternative_models(verbose=1)
+real_lm = fit_linear_models(subjs, model=alt_analysis['lm_model'])
 
 # Figure 1
 if 1 in create_figures:
@@ -72,7 +80,6 @@ if 6 in create_figures:
 
 # Figure 7: high beta_pe recovery
 if 7 in create_figures:
-    recovery_high_pe = recovery_analysis_high_pe()
     figure_7(recovery_high_pe)
     compile_figure_7()
 
@@ -80,3 +87,8 @@ if 7 in create_figures:
 if 8 in create_figures:
     figure_8(comparison)
     compile_figure_8()
+
+# Figure 9: alternative cognitive models
+if 9 in create_figures:
+    figure_9_alt(alt_analysis, real_lm)
+    compile_figure_9()

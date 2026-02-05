@@ -6,6 +6,7 @@ from analysis.analysis import *
 from plotting.plots_basic import *
 from plotting.plots_recovery import *
 from plotting.plots_comparison import *
+from plotting.plots_alt import *
 from plotting.svgtools import *
 
 import os
@@ -492,5 +493,50 @@ def figure_8(comparison, savefig=True, close=True):
     plot_ve_by_model(comparison['models'], comparison['ve'], ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig8_C' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def figure_9_alt(alt_analysis, real_lm, savefig=True, close=True):
+    """Generate Figure 9: Alternative cognitive models comparison.
+
+    Figure 9 layout:
+        [A] Beta comparison (alternative models vs real data)
+        [B] Variance explained comparison
+        [C] Example subject traces (2 rows x 3 cols)
+
+    Parameters:
+        alt_analysis (dict) - Output from alt_model_analysis with 'results', 'tasks', 'lm_model'.
+        real_lm (pd.DataFrame) - Linear model results for real data.
+        savefig (bool) - Whether to save individual panel figures.
+        close (bool) - Whether to close figures after saving.
+    """
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    results = alt_analysis['results']
+    tasks = alt_analysis['tasks']
+    lm_model = alt_analysis['lm_model']
+
+    # Panel A: Beta comparison
+    fig, ax = plt.subplots()
+    plot_comparison_betas(results, real_lm, lm_model, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig9_A' + FIG_FMT, dpi=300)
+
+    # Panel B: VE comparison
+    fig, ax = plt.subplots()
+    plot_comparison_ve(results, real_lm, lm_model, ax=ax)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig9_B' + FIG_FMT, dpi=300)
+
+    # Panel C: Example subjects (2 rows x 3 cols)
+    n_models = len(results)
+    fig, axes = plt.subplots(n_models, 3, figsize=(16, 3.5 * n_models))
+    if n_models == 1:
+        axes = axes.reshape(1, -1)
+    plot_example_subjects(results, tasks, lm_model, ax_grid=axes)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig9_C' + FIG_FMT, dpi=300)
 
     if close: plt.close('all')

@@ -262,3 +262,29 @@ def compile_figure_8(cleanup=FIG_CLEANUP):
         labels=[['A', 'B', 'C']],
         cleanup=cleanup
     )
+
+
+def compile_figure_9(cleanup=FIG_CLEANUP):
+    """Compile Figure 9: row 1 has A and B, row 2 has C (wide panel)."""
+    panel_a = FIGURES_DIR + 'fig9_A' + FIG_FMT
+    panel_b = FIGURES_DIR + 'fig9_B' + FIG_FMT
+    panel_c = FIGURES_DIR + 'fig9_C' + FIG_FMT
+
+    row1 = FIGURES_DIR + 'fig9_row1.svg'
+    combined = FIGURES_DIR + 'fig9_combined.svg'
+    labeled = FIGURES_DIR + 'fig9_labeled.svg'
+    final = FIGURES_DIR + 'fig9_final.svg'
+
+    # Build row 1
+    _combine_row([panel_a, panel_b], row1)
+    _combine_grid([row1, panel_c], combined)
+
+    # Add labels
+    _add_grid_labels(combined, labeled,
+                     [['A', 'B'], ['C', None]],
+                     col_widths=[PANEL_WIDTH, PANEL_WIDTH],
+                     row_heights=[PANEL_HEIGHT, PANEL_HEIGHT * 2])
+
+    panel_files = [panel_a, panel_b, panel_c]
+    intermediate = [row1, combined, labeled]
+    _finalize(labeled, final, panel_files, intermediate, cleanup)
