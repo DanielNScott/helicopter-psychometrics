@@ -4,89 +4,156 @@ from plotting.svgtools import *
 
 import os
 
+# Standard panel dimensions (6.4 x 4.8 inches at 72 dpi)
+PANEL_WIDTH = 460.8
+PANEL_HEIGHT = 345.6
 
-def compile_figure_1(cleanup=FIG_CLEANUP):
-    """Compile Figure 1 from individual panels.
 
-    Layout:
-        Row 1: [C] [D] [E]  (non-adaptive subject panels)
-        Row 2: [F] [G] [H]  (adaptive subject panels)
+def _combine_row(panels, output):
+    """Combine a list of panel files horizontally into output."""
+    if len(panels) == 1:
+        import shutil
+        shutil.copy(panels[0], output)
+        return
 
-    When A and E (manual SVGs) are ready, layout will become:
-        Row 1: [A] [C] [D] [E]
-        Row 2: [B] [F] [G] [H]
+    # Combine first two
+    tmp = output.replace('.svg', '_tmp.svg')
+    combine_svgs_horizontal(panels[0], panels[1], tmp if len(panels) > 2 else output)
+
+    # Add remaining panels
+    for i, panel in enumerate(panels[2:], start=2):
+        src = tmp
+        dst = output if i == len(panels) - 1 else tmp.replace('_tmp', f'_tmp{i}')
+        combine_svgs_horizontal(src, panel, dst)
+        if os.path.exists(src) and src != dst:
+            os.remove(src)
+        tmp = dst
+
+
+def _combine_grid(rows, output):
+    """Combine a list of row files vertically into output."""
+    if len(rows) == 1:
+        import shutil
+        shutil.copy(rows[0], output)
+        return
+
+    # Combine first two
+    tmp = output.replace('.svg', '_tmp.svg')
+    combine_svgs_vertical(rows[0], rows[1], tmp if len(rows) > 2 else output)
+
+    # Add remaining rows
+    for i, row in enumerate(rows[2:], start=2):
+        src = tmp
+        dst = output if i == len(rows) - 1 else tmp.replace('_tmp', f'_tmp{i}')
+        combine_svgs_vertical(src, row, dst)
+        if os.path.exists(src) and src != dst:
+            os.remove(src)
+        tmp = dst
+
+
+def _add_grid_labels(svg_in, svg_out, labels, col_widths=None, row_heights=None):
+    """Add panel labels at grid positions.
+
+    Parameters:
+        svg_in (str)       - Input SVG path.
+        svg_out (str)      - Output SVG path.
+        labels (list)      - 2D list of labels, row-major order. None entries are skipped.
+        col_widths (list)  - Width of each column. Defaults to PANEL_WIDTH for all.
+        row_heights (list) - Height of each row. Defaults to PANEL_HEIGHT for all.
     """
-    # Input panel files
-    panel_c = FIGURES_DIR + 'fig1_C' + FIG_FMT
-    panel_d = FIGURES_DIR + 'fig1_D' + FIG_FMT
-    panel_e = FIGURES_DIR + 'fig1_E' + FIG_FMT
-    panel_f = FIGURES_DIR + 'fig1_F' + FIG_FMT
-    panel_g = FIGURES_DIR + 'fig1_G' + FIG_FMT
-    panel_h = FIGURES_DIR + 'fig1_H' + FIG_FMT
+    n_rows = len(labels)
+    n_cols = max(len(row) for row in labels)
 
-    # Intermediate files
-    row1_cd = FIGURES_DIR + 'fig1_row1_cd.svg'
-    row1 = FIGURES_DIR + 'fig1_row1.svg'
-    row2_fg = FIGURES_DIR + 'fig1_row2_fg.svg'
-    row2 = FIGURES_DIR + 'fig1_row2.svg'
-    combined = FIGURES_DIR + 'fig1_combined.svg'
-    labeled = FIGURES_DIR + 'fig1_labeled.svg'
-    final = FIGURES_DIR + 'fig1_final.svg'
+    if col_widths is None:
+        col_widths = [PANEL_WIDTH] * n_cols
+    if row_heights is None:
+        row_heights = [PANEL_HEIGHT] * n_rows
 
-    # Merge row 1: C + D + E
-    combine_svgs_horizontal(panel_c, panel_d, row1_cd)
-    combine_svgs_horizontal(row1_cd, panel_e, row1)
+    current = svg_in
+    for r, row in enumerate(labels):
+        y = sum(row_heights[:r]) + 20
+        for c, label in enumerate(row):
+            if label is None:
+                continue
+            x = sum(col_widths[:c]) + 10
+            add_text_to_svg(current, svg_out, label, x=x, y=y, font_size=14)
+            current = svg_out
 
-    # Merge row 2: F + G + H
-    combine_svgs_horizontal(panel_f, panel_g, row2_fg)
-    combine_svgs_horizontal(row2_fg, panel_h, row2)
 
-    # Merge rows vertically
-    combine_svgs_vertical(row1, row2, combined)
-
-    # Add panel labels
-    # Standard panel: 460.8 x 345.6 pt (6.4 x 4.8 inches at 72 dpi)
-    # Row 1: C at x=0, D at x=460.8, E at x=921.6
-    # Row 2: F at x=0, G at x=460.8, H at x=921.6, y offset by 345.6
-    pw = 460.8  # panel width
-    ph = 345.6  # panel height
-    add_text_to_svg(combined, labeled, 'C', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=2*pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'F', x=10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'G', x=pw+10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'H', x=2*pw+10, y=ph+20, font_size=14)
-
-    # Scale to final width
+def _finalize(labeled, final, panel_files, intermediate_files, cleanup):
+    """Scale to final width, convert to PDF, and optionally clean up."""
     scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
     svg_to_pdf(final, final.replace('.svg', '.pdf'))
 
-    # Clean up intermediate and panel files
     if cleanup:
-        panel_files = [panel_c, panel_d, panel_e, panel_f, panel_g, panel_h]
-        intermediate_files = [row1_cd, row1, row2_fg, row2, combined, labeled]
         for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def _compile_grid(fig_num, layout, labels, cleanup=FIG_CLEANUP, col_widths=None, row_heights=None):
+    """Generic grid compilation.
+
+    Parameters:
+        fig_num (int)      - Figure number.
+        layout (list)      - 2D list of panel labels (e.g., [['A','B','C'], ['D','E','F']]).
+        labels (list)      - 2D list of display labels (can differ from layout for custom labeling).
+        cleanup (bool)     - Whether to clean up intermediate files.
+        col_widths (list)  - Width of each column.
+        row_heights (list) - Height of each row.
+    """
+    prefix = f'fig{fig_num}'
+
+    # Build panel file paths
+    panel_files = []
+    for row in layout:
+        for label in row:
+            if label is not None:
+                panel_files.append(FIGURES_DIR + f'{prefix}_{label}' + FIG_FMT)
+
+    # Intermediate files
+    row_files = [FIGURES_DIR + f'{prefix}_row{r}.svg' for r in range(len(layout))]
+    combined = FIGURES_DIR + f'{prefix}_combined.svg'
+    labeled_file = FIGURES_DIR + f'{prefix}_labeled.svg'
+    final = FIGURES_DIR + f'{prefix}_final.svg'
+
+    # Build each row
+    for r, row in enumerate(layout):
+        row_panels = [FIGURES_DIR + f'{prefix}_{label}' + FIG_FMT for label in row if label is not None]
+        _combine_row(row_panels, row_files[r])
+
+    # Combine rows
+    _combine_grid(row_files, combined)
+
+    # Add labels
+    _add_grid_labels(combined, labeled_file, labels, col_widths, row_heights)
+
+    # Finalize
+    intermediate = row_files + [combined, labeled_file]
+    _finalize(labeled_file, final, panel_files, intermediate, cleanup)
+
+
+def compile_figure_1(cleanup=FIG_CLEANUP):
+    """Compile Figure 1: two rows of three panels each."""
+    _compile_grid(
+        fig_num=1,
+        layout=[['C', 'D', 'E'], ['F', 'G', 'H']],
+        labels=[['C', 'D', 'E'], ['F', 'G', 'H']],
+        cleanup=cleanup
+    )
 
 
 def compile_figure_2(cleanup=FIG_CLEANUP):
-    """Compile Figure 2 from individual panels.
+    """Compile Figure 2: columns A/D, B/E stacked, then C alongside.
 
-    Layout:
-        Column 1: [A] above [D]  (normative predictions, CPP/RU/LR)
-        Column 2: [B] above [E]  (LR components, LR PCs)
-        Column 3: [C]            (correlation matrix)
+    This layout is non-standard, so we handle it explicitly.
     """
-    # Input panel files
     panel_a = FIGURES_DIR + 'fig2_A' + FIG_FMT
     panel_b = FIGURES_DIR + 'fig2_B' + FIG_FMT
     panel_c = FIGURES_DIR + 'fig2_C' + FIG_FMT
     panel_d = FIGURES_DIR + 'fig2_D' + FIG_FMT
     panel_e = FIGURES_DIR + 'fig2_E' + FIG_FMT
 
-    # Intermediate files
     col1 = FIGURES_DIR + 'fig2_col1.svg'
     col2 = FIGURES_DIR + 'fig2_col2.svg'
     cols_12 = FIGURES_DIR + 'fig2_cols12.svg'
@@ -94,349 +161,104 @@ def compile_figure_2(cleanup=FIG_CLEANUP):
     labeled = FIGURES_DIR + 'fig2_labeled.svg'
     final = FIGURES_DIR + 'fig2_final.svg'
 
-    # Build column 1: A above D
+    # Build columns
     combine_svgs_vertical(panel_a, panel_d, col1)
-
-    # Build column 2: B above E
     combine_svgs_vertical(panel_b, panel_e, col2)
 
-    # Merge columns horizontally: col1 + col2 + C
+    # Merge columns horizontally
     combine_svgs_horizontal(col1, col2, cols_12)
     combine_svgs_horizontal(cols_12, panel_c, combined)
 
-    # Add panel labels
-    # Layout: col1 (A/D) + col2 (B/E) + C
-    # Standard panel: 460.8 x 345.6 pt
-    pw = 460.8  # panel width
-    ph = 345.6  # panel height
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
+    # Add labels
+    _add_grid_labels(combined, labeled,
+                     [['A', 'B', 'C'], ['D', 'E', None]])
 
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e]
-        intermediate_files = [col1, col2, cols_12, combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    # Finalize
+    panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e]
+    intermediate = [col1, col2, cols_12, combined, labeled]
+    _finalize(labeled, final, panel_files, intermediate, cleanup)
 
 
 def compile_figure_3(cleanup=FIG_CLEANUP):
-    """Compile Figure 3 from individual panels.
-
-    Layout:
-        Row 1: [A] [B] [C]  (PE comparison, beta strips, cumulative VE)
-        Row 2: [D] [E]      (regression VE, PCA reconstruction VE)
-    """
-    # Input panel files
+    """Compile Figure 3: row 1 has 3 standard panels, row 2 has 2 wide panels."""
     panel_a = FIGURES_DIR + 'fig3_A' + FIG_FMT
     panel_b = FIGURES_DIR + 'fig3_B' + FIG_FMT
     panel_c = FIGURES_DIR + 'fig3_C' + FIG_FMT
     panel_d = FIGURES_DIR + 'fig3_D' + FIG_FMT
     panel_e = FIGURES_DIR + 'fig3_E' + FIG_FMT
 
-    # Intermediate files
-    row1_ab = FIGURES_DIR + 'fig3_row1_ab.svg'
     row1 = FIGURES_DIR + 'fig3_row1.svg'
     row2 = FIGURES_DIR + 'fig3_row2.svg'
     combined = FIGURES_DIR + 'fig3_combined.svg'
     labeled = FIGURES_DIR + 'fig3_labeled.svg'
     final = FIGURES_DIR + 'fig3_final.svg'
 
-    # Build row 1: A + B + C
-    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
-    combine_svgs_horizontal(row1_ab, panel_c, row1)
+    # Build rows
+    _combine_row([panel_a, panel_b, panel_c], row1)
+    _combine_row([panel_d, panel_e], row2)
+    _combine_grid([row1, row2], combined)
 
-    # Build row 2: D + E
-    combine_svgs_horizontal(panel_d, panel_e, row2)
+    # Row 2 has wide panels (691.2 pt each)
+    wpw = 691.2
+    _add_grid_labels(combined, labeled,
+                     [['A', 'B', 'C'], ['D', 'E']],
+                     col_widths=[PANEL_WIDTH, PANEL_WIDTH, PANEL_WIDTH],
+                     row_heights=[PANEL_HEIGHT, PANEL_HEIGHT])
 
-    # Combine rows
-    combine_svgs_vertical(row1, row2, combined)
+    # Override second row label positions manually
+    add_text_to_svg(labeled, labeled, 'D', x=10, y=PANEL_HEIGHT+20, font_size=14)
+    add_text_to_svg(labeled, labeled, 'E', x=wpw+10, y=PANEL_HEIGHT+20, font_size=14)
 
-    # Add panel labels
-    # Row 1: A, B, C (standard panels)
-    # Row 2: D, E (wide panels: 691.2 pt each)
-    pw = 460.8   # standard panel width
-    ph = 345.6   # panel height
-    wpw = 691.2  # wide panel width
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=wpw+10, y=ph+20, font_size=14)
-
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e]
-        intermediate_files = [row1_ab, row1, row2, combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e]
+    intermediate = [row1, row2, combined, labeled]
+    _finalize(labeled, final, panel_files, intermediate, cleanup)
 
 
 def compile_figure_4(cleanup=FIG_CLEANUP):
-    """Compile Figure 4 from individual panels.
-
-    Layout:
-        [A] [B]  (score reliability, beta reliability)
-    """
-    # Input panel files
-    panel_a = FIGURES_DIR + 'fig4_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig4_B' + FIG_FMT
-
-    # Intermediate files
-    combined = FIGURES_DIR + 'fig4_combined.svg'
-    labeled = FIGURES_DIR + 'fig4_labeled.svg'
-    final = FIGURES_DIR + 'fig4_final.svg'
-
-    # Merge panels horizontally
-    combine_svgs_horizontal(panel_a, panel_b, combined)
-
-    # Add panel labels
-    # Two standard panels side by side
-    pw = 460.8  # panel width
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b]
-        intermediate_files = [combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    """Compile Figure 4: single row with 2 panels."""
+    _compile_grid(
+        fig_num=4,
+        layout=[['A', 'B']],
+        labels=[['A', 'B']],
+        cleanup=cleanup
+    )
 
 
 def compile_figure_5(cleanup=FIG_CLEANUP):
-    """Compile Figure 5 from individual panels.
-
-    Layout:
-        Row 1: [A] [B] [C]  (beta_pe, beta_cpp, beta_ru recovery)
-        Row 2: [D] [E] [F]  (error corr, task scatter, variance decomposition)
-    """
-    # Input panel files
-    panel_a = FIGURES_DIR + 'fig5_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig5_B' + FIG_FMT
-    panel_c = FIGURES_DIR + 'fig5_C' + FIG_FMT
-    panel_d = FIGURES_DIR + 'fig5_D' + FIG_FMT
-    panel_e = FIGURES_DIR + 'fig5_E' + FIG_FMT
-    panel_f = FIGURES_DIR + 'fig5_F' + FIG_FMT
-
-    # Intermediate files
-    row1_ab = FIGURES_DIR + 'fig5_row1_ab.svg'
-    row1 = FIGURES_DIR + 'fig5_row1.svg'
-    row2_de = FIGURES_DIR + 'fig5_row2_de.svg'
-    row2 = FIGURES_DIR + 'fig5_row2.svg'
-    combined = FIGURES_DIR + 'fig5_combined.svg'
-    labeled = FIGURES_DIR + 'fig5_labeled.svg'
-    final = FIGURES_DIR + 'fig5_final.svg'
-
-    # Build row 1: A + B + C
-    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
-    combine_svgs_horizontal(row1_ab, panel_c, row1)
-
-    # Build row 2: D + E + F
-    combine_svgs_horizontal(panel_d, panel_e, row2_de)
-    combine_svgs_horizontal(row2_de, panel_f, row2)
-
-    # Combine rows vertically
-    combine_svgs_vertical(row1, row2, combined)
-
-    # Add panel labels
-    pw = 460.8  # panel width
-    ph = 345.6  # panel height
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'F', x=2*pw+10, y=ph+20, font_size=14)
-
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e, panel_f]
-        intermediate_files = [row1_ab, row1, row2_de, row2, combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    """Compile Figure 5: 2x3 grid."""
+    _compile_grid(
+        fig_num=5,
+        layout=[['A', 'B', 'C'], ['D', 'E', 'F']],
+        labels=[['A', 'B', 'C'], ['D', 'E', 'F']],
+        cleanup=cleanup
+    )
 
 
 def compile_figure_6(cleanup=FIG_CLEANUP):
-    """Compile Figure 6 from individual panels.
-
-    Layout:
-        Row 1: [A] [B] [C]  (recovery SD line plots)
-        Row 2: [D] [E] [F]  (recovery SD heatmaps)
-    """
-    # Input panel files
-    panel_a = FIGURES_DIR + 'fig6_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig6_B' + FIG_FMT
-    panel_c = FIGURES_DIR + 'fig6_C' + FIG_FMT
-    panel_d = FIGURES_DIR + 'fig6_D' + FIG_FMT
-    panel_e = FIGURES_DIR + 'fig6_E' + FIG_FMT
-    panel_f = FIGURES_DIR + 'fig6_F' + FIG_FMT
-
-    # Intermediate files
-    row1_ab = FIGURES_DIR + 'fig6_row1_ab.svg'
-    row1 = FIGURES_DIR + 'fig6_row1.svg'
-    row2_de = FIGURES_DIR + 'fig6_row2_de.svg'
-    row2 = FIGURES_DIR + 'fig6_row2.svg'
-    combined = FIGURES_DIR + 'fig6_combined.svg'
-    labeled = FIGURES_DIR + 'fig6_labeled.svg'
-    final = FIGURES_DIR + 'fig6_final.svg'
-
-    # Build row 1: A + B + C
-    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
-    combine_svgs_horizontal(row1_ab, panel_c, row1)
-
-    # Build row 2: D + E + F
-    combine_svgs_horizontal(panel_d, panel_e, row2_de)
-    combine_svgs_horizontal(row2_de, panel_f, row2)
-
-    # Combine rows vertically
-    combine_svgs_vertical(row1, row2, combined)
-
-    # Add panel labels
-    pw = 460.8  # panel width
-    ph = 345.6  # panel height
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'F', x=2*pw+10, y=ph+20, font_size=14)
-
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e, panel_f]
-        intermediate_files = [row1_ab, row1, row2_de, row2, combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    """Compile Figure 6: 2x3 grid."""
+    _compile_grid(
+        fig_num=6,
+        layout=[['A', 'B', 'C'], ['D', 'E', 'F']],
+        labels=[['A', 'B', 'C'], ['D', 'E', 'F']],
+        cleanup=cleanup
+    )
 
 
 def compile_figure_7(cleanup=FIG_CLEANUP):
-    """Compile Figure 7 from individual panels.
-
-    Layout:
-        Row 1: [A] [B] [C]  (recovery SD line plots, high beta_pe)
-        Row 2: [D] [E] [F]  (recovery SD heatmaps, high beta_pe)
-    """
-    # Input panel files
-    panel_a = FIGURES_DIR + 'fig7_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig7_B' + FIG_FMT
-    panel_c = FIGURES_DIR + 'fig7_C' + FIG_FMT
-    panel_d = FIGURES_DIR + 'fig7_D' + FIG_FMT
-    panel_e = FIGURES_DIR + 'fig7_E' + FIG_FMT
-    panel_f = FIGURES_DIR + 'fig7_F' + FIG_FMT
-
-    # Intermediate files
-    row1_ab = FIGURES_DIR + 'fig7_row1_ab.svg'
-    row1 = FIGURES_DIR + 'fig7_row1.svg'
-    row2_de = FIGURES_DIR + 'fig7_row2_de.svg'
-    row2 = FIGURES_DIR + 'fig7_row2.svg'
-    combined = FIGURES_DIR + 'fig7_combined.svg'
-    labeled = FIGURES_DIR + 'fig7_labeled.svg'
-    final = FIGURES_DIR + 'fig7_final.svg'
-
-    # Build row 1: A + B + C
-    combine_svgs_horizontal(panel_a, panel_b, row1_ab)
-    combine_svgs_horizontal(row1_ab, panel_c, row1)
-
-    # Build row 2: D + E + F
-    combine_svgs_horizontal(panel_d, panel_e, row2_de)
-    combine_svgs_horizontal(row2_de, panel_f, row2)
-
-    # Combine rows vertically
-    combine_svgs_vertical(row1, row2, combined)
-
-    # Add panel labels
-    pw = 460.8  # panel width
-    ph = 345.6  # panel height
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'D', x=10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'E', x=pw+10, y=ph+20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'F', x=2*pw+10, y=ph+20, font_size=14)
-
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b, panel_c, panel_d, panel_e, panel_f]
-        intermediate_files = [row1_ab, row1, row2_de, row2, combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    """Compile Figure 7: 2x3 grid."""
+    _compile_grid(
+        fig_num=7,
+        layout=[['A', 'B', 'C'], ['D', 'E', 'F']],
+        labels=[['A', 'B', 'C'], ['D', 'E', 'F']],
+        cleanup=cleanup
+    )
 
 
 def compile_figure_8(cleanup=FIG_CLEANUP):
-    """Compile Figure 8 from individual panels.
-
-    Layout:
-        [A] [B] [C]  (recovery, reliability, VE)
-    """
-    panel_a = FIGURES_DIR + 'fig8_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig8_B' + FIG_FMT
-    panel_c = FIGURES_DIR + 'fig8_C' + FIG_FMT
-
-    # Intermediate files
-    row_ab = FIGURES_DIR + 'fig8_row_ab.svg'
-    combined = FIGURES_DIR + 'fig8_combined.svg'
-    labeled = FIGURES_DIR + 'fig8_labeled.svg'
-    final = FIGURES_DIR + 'fig8_final.svg'
-
-    # Build row: A + B + C
-    combine_svgs_horizontal(panel_a, panel_b, row_ab)
-    combine_svgs_horizontal(row_ab, panel_c, combined)
-
-    # Add panel labels
-    pw = 460.8  # panel width
-    add_text_to_svg(combined, labeled, 'A', x=10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'B', x=pw+10, y=20, font_size=14)
-    add_text_to_svg(labeled, labeled, 'C', x=2*pw+10, y=20, font_size=14)
-
-    # Scale to final width
-    scale_svg(labeled, final, FIG_WIDTH=FIG_WIDTH)
-
-    # Convert to PDF
-    svg_to_pdf(final, final.replace('.svg', '.pdf'))
-
-    # Clean up intermediate and panel files
-    if cleanup:
-        panel_files = [panel_a, panel_b, panel_c]
-        intermediate_files = [row_ab, combined, labeled]
-        for f in panel_files + intermediate_files:
-            if os.path.exists(f): os.remove(f)
+    """Compile Figure 8: single row with 3 panels."""
+    _compile_grid(
+        fig_num=8,
+        layout=[['A', 'B', 'C']],
+        labels=[['A', 'B', 'C']],
+        cleanup=cleanup
+    )
