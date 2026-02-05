@@ -315,22 +315,23 @@ def figure_4(reliabilities_by_dataset, dataset_config, savefig=True, close=True)
     if close: plt.close('all')
 
 
-def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
+def figure_5(err_analysis, recovery_analysis, savefig=True, close=True):
     """Generate Figure 5: Parameter recovery and estimation analysis.
 
     Figure 5 layout:
         Row 1: [A] beta_pe recovery, [B] beta_cpp recovery, [C] beta_ru recovery
-        Row 2: [D] Error correlation matrix, [E] Task scatter, [F] Variance decomposition
+        Row 2: [D] Error correlation matrix, [E] Variance decomposition, [F] Error eigenvectors
 
     Parameters:
         err_analysis (dict) - Output from analyze_error_covariance.
-        fim_df (pd.DataFrame) - Output from analyze_task_information.
         recovery_analysis (dict) - Output from analyze_recovery.
         savefig (bool) - Whether to save individual panel figures.
         close (bool) - Whether to close figures after saving.
     """
-    from plotting.plots_fim import plot_task_scatter
-    from plotting.plots_recovery import plot_error_corr_matrix, plot_variance_decomposition, plot_param_recovery
+    from plotting.plots_recovery import (
+        plot_error_corr_matrix, plot_variance_decomposition,
+        plot_param_recovery, plot_error_eigenvectors
+    )
 
     if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
 
@@ -363,16 +364,15 @@ def figure_5(err_analysis, fim_df, recovery_analysis, savefig=True, close=True):
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig5_D' + FIG_FMT, dpi=300)
 
-    # Panel E: N changepoints vs std run length, colored by max error SD
+    # Panel E: Error source decomposition
     fig, ax = plt.subplots()
-    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_2', ax=ax)
-    fig.colorbar(sc, ax=ax, shrink=0.8)
+    plot_variance_decomposition(recovery_analysis, ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig5_E' + FIG_FMT, dpi=300)
 
-    # Panel F: Error source decomposition
+    # Panel F: Error covariance eigenvectors
     fig, ax = plt.subplots()
-    plot_variance_decomposition(recovery_analysis, ax=ax)
+    plot_error_eigenvectors(err_analysis, ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig5_F' + FIG_FMT, dpi=300)
 
@@ -387,7 +387,7 @@ def figure_6(recovery_results, savefig=True, close=True):
         Row 2: [D] Heatmap beta_pe,         [E] Heatmap beta_cpp,         [F] Heatmap beta_ru
 
     Parameters:
-        recovery_results (dict) - Output from parameter_recovery (with 'results', 'true_params').
+        recovery_results (dict) - Output from parameter_recovery.
         savefig (bool)          - Whether to save individual panel figures.
         close (bool)            - Whether to close figures after saving.
     """
@@ -419,52 +419,10 @@ def figure_6(recovery_results, savefig=True, close=True):
     if close: plt.close('all')
 
 
-def figure_7(recovery_results, savefig=True, close=True):
-    """Generate Figure 7: Recovery SD as a function of beta_pe (high beta_pe range).
-
-    Same layout as Figure 6, but for beta_pe in [0.8, 0.98].
+def figure_7(comparison, savefig=True, close=True):
+    """Generate Figure 7: Model comparison (recovery, reliability, variance explained).
 
     Figure 7 layout:
-        Row 1: [A] SD(beta_pe) vs beta_pe, [B] SD(beta_cpp) vs beta_pe, [C] SD(beta_ru) vs beta_pe
-        Row 2: [D] Heatmap beta_pe,         [E] Heatmap beta_cpp,         [F] Heatmap beta_ru
-
-    Parameters:
-        recovery_results (dict) - Output from parameter_recovery (with 'results', 'true_params').
-        savefig (bool)          - Whether to save individual panel figures.
-        close (bool)            - Whether to close figures after saving.
-    """
-    from plotting.plots_recovery import plot_recovery_sd_by_param, plot_recovery_sd_heatmap
-
-    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
-
-    results = recovery_results['results']
-    true_params = recovery_results['true_params']
-    param_names = results['param_names']
-    params = ['beta_pe', 'beta_cpp', 'beta_ru']
-    panel_labels = ['A', 'B', 'C', 'D', 'E', 'F']
-
-    # Row 1: line plots
-    for i, p in enumerate(params):
-        fig, ax = plt.subplots()
-        plot_recovery_sd_by_param(results, true_params, param_names, y_param=p, ax=ax)
-        fig.tight_layout()
-        if savefig: fig.savefig(FIGURES_DIR + f'fig7_{panel_labels[i]}' + FIG_FMT, dpi=300)
-
-    # Row 2: heatmaps
-    for i, p in enumerate(params):
-        fig, ax = plt.subplots()
-        im = plot_recovery_sd_heatmap(results, true_params, param_names, y_param=p, ax=ax)
-        fig.colorbar(im, ax=ax, label='SD')
-        fig.tight_layout()
-        if savefig: fig.savefig(FIGURES_DIR + f'fig7_{panel_labels[i + 3]}' + FIG_FMT, dpi=300)
-
-    if close: plt.close('all')
-
-
-def figure_8(comparison, savefig=True, close=True):
-    """Generate Figure 8: Model comparison (recovery, reliability, variance explained).
-
-    Figure 8 layout:
         [A] Recovery r by parameter and model
         [B] Split-half reliability by parameter and model
         [C] Variance explained by model
@@ -481,27 +439,27 @@ def figure_8(comparison, savefig=True, close=True):
     fig, ax = plt.subplots()
     plot_recovery_by_model(comparison['models'], comparison['recovery'], comparison['gen_params'], ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig8_A' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig7_A' + FIG_FMT, dpi=300)
 
     # Panel B: Split-half reliability by parameter and model
     fig, ax = plt.subplots()
     plot_reliability_by_model(comparison['models'], comparison['reliability'], ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig8_B' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig7_B' + FIG_FMT, dpi=300)
 
     # Panel C: Variance explained by model
     fig, ax = plt.subplots()
     plot_ve_by_model(comparison['models'], comparison['ve'], ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig8_C' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig7_C' + FIG_FMT, dpi=300)
 
     if close: plt.close('all')
 
 
-def figure_9_alt(alt_analysis, real_lm, savefig=True, close=True):
-    """Generate Figure 9: Alternative cognitive models comparison.
+def figure_8(alt_analysis, real_lm, savefig=True, close=True):
+    """Generate Figure 8: Alternative cognitive models comparison.
 
-    Figure 9 layout:
+    Figure 8 layout:
         [A] Beta comparison (alternative models vs real data)
         [B] Variance explained comparison
         [C] Example subject traces (2 rows x 3 cols)
@@ -523,13 +481,13 @@ def figure_9_alt(alt_analysis, real_lm, savefig=True, close=True):
     fig, ax = plt.subplots()
     plot_comparison_betas(results, real_lm, lm_model, ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig9_A' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig8_A' + FIG_FMT, dpi=300)
 
     # Panel B: VE comparison
     fig, ax = plt.subplots()
     plot_comparison_ve(results, real_lm, lm_model, ax=ax)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig9_B' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig8_B' + FIG_FMT, dpi=300)
 
     # Panel C: Example subjects (2 rows x 3 cols)
     n_models = len(results)
@@ -538,6 +496,31 @@ def figure_9_alt(alt_analysis, real_lm, savefig=True, close=True):
         axes = axes.reshape(1, -1)
     plot_example_subjects(results, tasks, lm_model, ax_grid=axes)
     fig.tight_layout()
-    if savefig: fig.savefig(FIGURES_DIR + 'fig9_C' + FIG_FMT, dpi=300)
+    if savefig: fig.savefig(FIGURES_DIR + 'fig8_C' + FIG_FMT, dpi=300)
+
+    if close: plt.close('all')
+
+
+def figure_9(fim_df, savefig=True, close=True):
+    """Generate Figure 9: Task information analysis.
+
+    Figure 9 layout:
+        [A] N changepoints vs std run length, colored by max error SD
+
+    Parameters:
+        fim_df (pd.DataFrame) - Output from analyze_task_information.
+        savefig (bool) - Whether to save individual panel figures.
+        close (bool) - Whether to close figures after saving.
+    """
+    from plotting.plots_fim import plot_task_scatter
+
+    if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
+
+    # Panel A: N changepoints vs std run length, colored by max error SD
+    fig, ax = plt.subplots()
+    sc = plot_task_scatter(fim_df, 'n_changepoints', 'std_run_length', color_col='err_sd_2', ax=ax)
+    fig.colorbar(sc, ax=ax, shrink=0.8)
+    fig.tight_layout()
+    if savefig: fig.savefig(FIGURES_DIR + 'fig9_A' + FIG_FMT, dpi=300)
 
     if close: plt.close('all')

@@ -25,7 +25,7 @@ RESULTS_DIR = './data/'
 
 # Parameter bounds for optimization (defaults populated from DEFAULT_PARAMS_SUBJ)
 _BOUNDS_SPEC = {
-    'beta_pe':         {'lb': 0.0,   'ub': 0.8},
+    'beta_pe':         {'lb': 0.0,   'ub': 1.0},
     'beta_cpp':        {'lb': 0.0,   'ub': 1.0},
     'beta_ru':         {'lb': 0.0,   'ub': 1.0},
     'mix':             {'lb': 0.01,  'ub': 1.0},

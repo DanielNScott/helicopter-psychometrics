@@ -245,35 +245,25 @@ def compile_figure_6(cleanup=FIG_CLEANUP):
 
 
 def compile_figure_7(cleanup=FIG_CLEANUP):
-    """Compile Figure 7: 2x3 grid."""
+    """Compile Figure 7: single row with 3 panels (model comparison)."""
     _compile_grid(
         fig_num=7,
-        layout=[['A', 'B', 'C'], ['D', 'E', 'F']],
-        labels=[['A', 'B', 'C'], ['D', 'E', 'F']],
-        cleanup=cleanup
-    )
-
-
-def compile_figure_8(cleanup=FIG_CLEANUP):
-    """Compile Figure 8: single row with 3 panels."""
-    _compile_grid(
-        fig_num=8,
         layout=[['A', 'B', 'C']],
         labels=[['A', 'B', 'C']],
         cleanup=cleanup
     )
 
 
-def compile_figure_9(cleanup=FIG_CLEANUP):
-    """Compile Figure 9: row 1 has A and B, row 2 has C (wide panel)."""
-    panel_a = FIGURES_DIR + 'fig9_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig9_B' + FIG_FMT
-    panel_c = FIGURES_DIR + 'fig9_C' + FIG_FMT
+def compile_figure_8(cleanup=FIG_CLEANUP):
+    """Compile Figure 8: row 1 has A and B, row 2 has C (wide panel for alt models)."""
+    panel_a = FIGURES_DIR + 'fig8_A' + FIG_FMT
+    panel_b = FIGURES_DIR + 'fig8_B' + FIG_FMT
+    panel_c = FIGURES_DIR + 'fig8_C' + FIG_FMT
 
-    row1 = FIGURES_DIR + 'fig9_row1.svg'
-    combined = FIGURES_DIR + 'fig9_combined.svg'
-    labeled = FIGURES_DIR + 'fig9_labeled.svg'
-    final = FIGURES_DIR + 'fig9_final.svg'
+    row1 = FIGURES_DIR + 'fig8_row1.svg'
+    combined = FIGURES_DIR + 'fig8_combined.svg'
+    labeled = FIGURES_DIR + 'fig8_labeled.svg'
+    final = FIGURES_DIR + 'fig8_final.svg'
 
     # Build row 1
     _combine_row([panel_a, panel_b], row1)
@@ -288,3 +278,13 @@ def compile_figure_9(cleanup=FIG_CLEANUP):
     panel_files = [panel_a, panel_b, panel_c]
     intermediate = [row1, combined, labeled]
     _finalize(labeled, final, panel_files, intermediate, cleanup)
+
+
+def compile_figure_9(cleanup=FIG_CLEANUP):
+    """Compile Figure 9: single panel (task scatter)."""
+    _compile_grid(
+        fig_num=9,
+        layout=[['A']],
+        labels=[['A']],
+        cleanup=cleanup
+    )

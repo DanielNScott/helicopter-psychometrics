@@ -12,12 +12,12 @@ from analysis.comparison import model_comparison_analysis
 from analysis.alternatives import analyze_alternative_models
 from estimation.mle import *
 from estimation.fim import *
-from estimation.main import recovery_analysis, recovery_analysis_high_pe
+from estimation.main import recovery_analysis
 from plotting.figures import *
 from plotting.compile import *
 
 # Settings
-create_figures = [7] #[1,2,3,4,5]
+create_figures = [6] #[1,2,3,4,5]
 run_recovery = True
 
 # Read experimental data
@@ -40,9 +40,6 @@ recovery, err_analysis, fim_df = recovery_analysis()
 
 # Run model comparison analysis
 comparison = model_comparison_analysis(subjs, tasks)
-
-# Recover the high-beta_pe regime
-# recovery_high_pe = recovery_analysis_high_pe()
 
 # Run alternative model analysis
 alt_analysis = analyze_alternative_models(verbose=1)
@@ -68,27 +65,27 @@ if 4 in create_figures:
     figure_4(reliabilities, DATASET_CONFIG)
     compile_figure_4()
 
-# Figure 5
+# Figure 5: parameter recovery and estimation analysis
 if 5 in create_figures:
-    figure_5(err_analysis, fim_df, recovery['analysis'])
+    figure_5(err_analysis, recovery['analysis'])
     compile_figure_5()
 
-# Figure 6
+# Figure 6: recovery SD as function of beta_pe
 if 6 in create_figures:
     figure_6(recovery)
     compile_figure_6()
 
-# Figure 7: high beta_pe recovery
+# Figure 7: model comparison (recovery, reliability, VE)
 if 7 in create_figures:
-    figure_7(recovery_high_pe)
+    figure_7(comparison)
     compile_figure_7()
 
-# Figure 8: model comparison (recovery, reliability, VE)
+# Figure 8: alternative cognitive models
 if 8 in create_figures:
-    figure_8(comparison)
+    figure_8(alt_analysis, real_lm)
     compile_figure_8()
 
-# Figure 9: alternative cognitive models
+# Figure 9: task information analysis
 if 9 in create_figures:
-    figure_9_alt(alt_analysis, real_lm)
+    figure_9(fim_df)
     compile_figure_9()
