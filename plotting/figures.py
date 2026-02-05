@@ -5,6 +5,7 @@ from changepoint.subjects import *
 from analysis.analysis import *
 from plotting.plots_basic import *
 from plotting.plots_recovery import *
+from plotting.plots_comparison import *
 from plotting.svgtools import *
 
 import os
@@ -796,7 +797,7 @@ def compile_figure_6(cleanup=FIG_CLEANUP):
             if os.path.exists(f): os.remove(f)
 
 
-def figure_8(models, recovery_results, reliability_results, ve_results, gen_params, savefig=True, close=True):
+def figure_8(comparison, savefig=True, close=True):
     """Generate Figure 8: Model comparison (recovery, reliability, variance explained).
 
     Figure 8 layout:
@@ -805,118 +806,28 @@ def figure_8(models, recovery_results, reliability_results, ve_results, gen_para
         [C] Variance explained by model
 
     Parameters:
-        models (dict)              - Model name -> param names mapping.
-        recovery_results (dict)    - Model name -> recovery result dict.
-        reliability_results (dict) - Model name -> reliability DataFrame.
-        ve_results (dict)          - Model name -> VE array (per subject).
-        gen_params (list)          - Generative parameter names.
-        savefig (bool)             - Whether to save individual panel figures.
-        close (bool)               - Whether to close figures after saving.
+        comparison (dict) - Output from model_comparison_analysis.
+        savefig (bool)    - Whether to save individual panel figures.
+        close (bool)      - Whether to close figures after saving.
     """
 
     if savefig: os.makedirs(FIGURES_DIR, exist_ok=True)
 
-    model_labels = {
-        'model-pe-cpp-ru':             'pe-cpp-ru',
-        'model-pe-cpp-ru-prod':        'pe-cpp-ru-prod',
-        'model-pe-cpp-ru-deltas':      'deltas',
-        'model-pe-cpp-ru-prod-deltas': 'prod-deltas',
-    }
-    model_colors = {
-        'model-pe-cpp-ru':             'C0',
-        'model-pe-cpp-ru-prod':        'C1',
-        'model-pe-cpp-ru-deltas':      'C2',
-        'model-pe-cpp-ru-prod-deltas': 'C3',
-    }
-
-    n_models = len(models)
-    width = 0.8 / n_models
-
-    # --- Panel A: Recovery correlation by parameter and model ---
+    # Panel A: Recovery correlation by parameter and model
     fig, ax = plt.subplots()
-    for m_idx, model in enumerate(models):
-        result = recovery_results[model]
-        mean_ests = np.nanmean(result['results']['ests'], axis=(1, 2, 3))
-        fit_param_names = result['results']['param_names']
-
-        for p_idx, gen_name in enumerate(gen_params):
-            if gen_name not in fit_param_names:
-                continue
-            fit_idx = fit_param_names.index(gen_name)
-            recovered = mean_ests[:, fit_idx]
-            true_vals = result['true_params'][gen_name]
-            r = np.corrcoef(true_vals, recovered)[0, 1]
-            x = p_idx + (m_idx - (n_models - 1) / 2) * width
-            ax.plot(x, r, 'o', color=model_colors[model], markersize=7)
-
-    for model in models:
-        ax.plot([], [], 'o', color=model_colors[model], label=model_labels[model])
-    ax.set_xticks(range(len(gen_params)))
-    ax.set_xticklabels(gen_params)
-    ax.set_ylabel('Recovery r (true vs recovered)')
-    ax.set_title('Parameter Recovery by Model')
-    ax.legend(fontsize=8)
-    ax.set_ylim(0, 1.1)
-    ax.grid(alpha=0.3)
+    plot_recovery_by_model(comparison['models'], comparison['recovery'], comparison['gen_params'], ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig8_A' + FIG_FMT, dpi=300)
 
-    # --- Panel B: Split-half reliability by parameter and model ---
-
-    def _short_beta_name(col, model):
-        prefix = f'Rho {model}_'
-        return col.replace(prefix, '') if col.startswith(prefix) else col
-
-    all_short_names = []
-    for model in models:
-        rel = reliability_results[model]
-        for col in rel.columns:
-            short = _short_beta_name(col, model)
-            if short not in all_short_names:
-                all_short_names.append(short)
-
+    # Panel B: Split-half reliability by parameter and model
     fig, ax = plt.subplots()
-    for m_idx, model in enumerate(models):
-        rel = reliability_results[model]
-        for col in rel.columns:
-            short = _short_beta_name(col, model)
-            p_idx = all_short_names.index(short)
-            mean_r = rel[col].mean()
-            std_r = rel[col].std()
-            x = p_idx + (m_idx - (n_models - 1) / 2) * width
-            ax.errorbar(x, mean_r, yerr=std_r, fmt='o', color=model_colors[model],
-                        markersize=7, capsize=3)
-
-    for model in models:
-        ax.plot([], [], 'o', color=model_colors[model], label=model_labels[model])
-    ax.set_xticks(range(len(all_short_names)))
-    ax.set_xticklabels(all_short_names, rotation=30, ha='right')
-    ax.set_ylabel('Split-half r (mean +/- sd)')
-    ax.set_title('Parameter Reliability by Model')
-    ax.legend(fontsize=8)
-    ax.set_ylim(0, 1.1)
-    ax.grid(alpha=0.3)
+    plot_reliability_by_model(comparison['models'], comparison['reliability'], ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig8_B' + FIG_FMT, dpi=300)
 
-    # --- Panel C: Variance explained by model ---
+    # Panel C: Variance explained by model
     fig, ax = plt.subplots()
-    positions = range(len(models))
-    model_names = list(models.keys())
-
-    for m_idx, model in enumerate(model_names):
-        ve = ve_results[model]
-        mean_ve = ve.mean()
-        std_ve = ve.std()
-        ax.errorbar(m_idx, mean_ve, yerr=std_ve, fmt='o', color=model_colors[model],
-                    markersize=7, capsize=3)
-
-    ax.set_xticks(positions)
-    ax.set_xticklabels([model_labels[m] for m in model_names], rotation=30, ha='right')
-    ax.set_ylabel('Variance explained (R²)')
-    ax.set_title('Model Variance Explained')
-    ax.set_ylim(0, 1.1)
-    ax.grid(alpha=0.3)
+    plot_ve_by_model(comparison['models'], comparison['ve'], ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig8_C' + FIG_FMT, dpi=300)
 
