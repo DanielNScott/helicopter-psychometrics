@@ -32,8 +32,8 @@ subj_pcp_lr, subj_pcp_cpp, subj_pcp_ru = get_peri_cp_stats(subjs, tasks)
 # Fit PCA to peri-CP learning rates
 group_pca_basis, subj_pca_lr_scores, group_pca_ve = fit_peri_cp_pca(subj_pcp_lr)
 
-# Split half reliability analyses
-reliabilities = do_split_half_analysis(subjs, tasks, nreps=20)
+# Split half reliability analyses (multi-dataset)
+reliabilities = multi_dataset_split_half_analysis(nreps=20, verbose=1)
 
 # Run the parameter recovery analysis
 recovery, err_analysis, fim_df = recovery_analysis()
@@ -65,7 +65,7 @@ if 3 in create_figures:
 
 # Figure 4
 if 4 in create_figures:
-    figure_4(reliabilities)
+    figure_4(reliabilities, DATASET_CONFIG)
     compile_figure_4()
 
 # Figure 5

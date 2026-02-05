@@ -272,64 +272,88 @@ def plot_bar_with_arrows(base_vec, arrow_vecs, labels=None, title=None, ax=None)
         ax.set_title(title)
 
 
-def plot_score_reliability(reliabilities, ax=None):
-    """Plot split-half reliability of PCA scores as mean +/- 2 SD.
+def _plot_reliability(reliabilities_by_dataset, dataset_config, col_filter, label_fn, title, ax=None):
+    """Plot split-half reliability for multiple datasets.
 
     Parameters:
-        reliabilities (pd.DataFrame) - DataFrame with 'Rho Score 0', etc. columns.
-        ax (matplotlib.axes.Axes) - Axes to plot on. If None, creates new figure.
+        reliabilities_by_dataset (dict) - dataset_name -> DataFrame
+        dataset_config (dict)           - dataset_name -> (label, color)
+        col_filter (callable)           - Function to filter columns from DataFrame
+        label_fn (callable)             - Function to generate x-axis labels from columns
+        title (str)                     - Plot title
+        ax (matplotlib.axes.Axes)       - Axes to plot on. If None, creates new figure.
     """
     if ax is None: fig, ax = plt.subplots()
 
-    # Get score columns
-    cols = [c for c in reliabilities.columns if c.startswith('Rho Score')]
-    labels = [f'PC{i+1}' for i in range(len(cols))]
+    datasets = list(reliabilities_by_dataset.keys())
+    n_datasets = len(datasets)
 
-    # Compute mean and SD
-    means = reliabilities[cols].mean().values
-    sds = reliabilities[cols].std().values
+    # Get columns from first dataset
+    first_df = reliabilities_by_dataset[datasets[0]]
+    cols = [c for c in first_df.columns if col_filter(c)]
+    labels = label_fn(cols)
+    n_cols = len(cols)
 
-    # Plot points with error bars
-    xs = range(len(cols))
-    ax.errorbar(xs, means, yerr=2*sds, fmt='o', capsize=4)
+    width = 0.8 / n_datasets
+    show_legend = n_datasets > 1
 
-    ax.set_xticks(xs)
+    for d_idx, dataset in enumerate(datasets):
+        df = reliabilities_by_dataset[dataset]
+        label, color = dataset_config[dataset]
+
+        means = df[cols].mean().values
+        sds = df[cols].std().values
+
+        xs = np.arange(n_cols) + (d_idx - (n_datasets - 1) / 2) * width
+        ax.errorbar(xs, means, yerr=2*sds, fmt='o', capsize=4, color=color, label=label if show_legend else None)
+
+    ax.set_xticks(range(n_cols))
     ax.set_xticklabels(labels)
     ax.set_ylabel('Split-Half Correlation')
     ax.set_ylim(-0.2, 1.2)
-    ax.set_title('PCA Score Reliability')
+    ax.set_title(title)
+    if show_legend: ax.legend(fontsize=8)
     ax.grid(alpha=0.2)
+
+
+def plot_score_reliability(reliabilities, ax=None):
+    """Plot split-half reliability of PCA scores as mean +/- 2 SD."""
+    _plot_reliability(
+        {'_': reliabilities}, {'_': ('', 'C0')},
+        col_filter=lambda c: c.startswith('Rho Score'),
+        label_fn=lambda cols: [f'PC{i+1}' for i in range(len(cols))],
+        title='PCA Score Reliability', ax=ax
+    )
 
 
 def plot_beta_reliability(reliabilities, ax=None):
-    """Plot split-half reliability of regression betas as mean +/- 2 SD.
+    """Plot split-half reliability of regression betas as mean +/- 2 SD."""
+    _plot_reliability(
+        {'_': reliabilities}, {'_': ('', 'C0')},
+        col_filter=lambda c: 'beta_' in c,
+        label_fn=lambda cols: [c.split('beta_')[-1].upper() for c in cols],
+        title='Regression Beta Reliability', ax=ax
+    )
 
-    Parameters:
-        reliabilities (pd.DataFrame) - DataFrame with 'Rho n0_beta_...' columns.
-        ax (matplotlib.axes.Axes) - Axes to plot on. If None, creates new figure.
-    """
-    if ax is None: fig, ax = plt.subplots()
 
-    # Get beta columns
-    cols = [c for c in reliabilities.columns if 'beta_' in c]
+def plot_score_reliability_multi(reliabilities_by_dataset, dataset_config, ax=None):
+    """Plot split-half reliability of PCA scores for multiple datasets."""
+    _plot_reliability(
+        reliabilities_by_dataset, dataset_config,
+        col_filter=lambda c: c.startswith('Rho Score'),
+        label_fn=lambda cols: [f'PC{i+1}' for i in range(len(cols))],
+        title='PCA Score Reliability', ax=ax
+    )
 
-    # Extract short labels from column names
-    labels = [c.split('beta_')[-1].upper() for c in cols]
 
-    # Compute mean and SD
-    means = reliabilities[cols].mean().values
-    sds = reliabilities[cols].std().values
-
-    # Plot points with error bars
-    xs = range(len(cols))
-    ax.errorbar(xs, means, yerr=2*sds, fmt='o', capsize=4)
-
-    ax.set_xticks(xs)
-    ax.set_xticklabels(labels)
-    ax.set_ylabel('Split-Half Correlation')
-    ax.set_ylim(-0.2, 1.2)
-    ax.set_title('Regression Beta Reliability')
-    ax.grid(alpha=0.2)
+def plot_beta_reliability_multi(reliabilities_by_dataset, dataset_config, ax=None):
+    """Plot split-half reliability of regression betas for multiple datasets."""
+    _plot_reliability(
+        reliabilities_by_dataset, dataset_config,
+        col_filter=lambda c: 'beta_' in c,
+        label_fn=lambda cols: [c.split('beta_')[-1].upper() for c in cols],
+        title='Regression Beta Reliability', ax=ax
+    )
 
 
 def cdf(x):

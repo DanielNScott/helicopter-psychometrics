@@ -2,17 +2,25 @@
 from configs import *
 from analysis.analysis import fit_linear_models, fit_peri_cp_pca, get_peri_cp_stats
 from analysis.aggregation import split_within_subjects
+from changepoint.dataio import read_experiment
+
+# Dataset display configuration: name -> (label, color)
+DATASET_CONFIG = {
+    'MN': ('McGuire & Nassar 2014', 'C0'),
+    'JN': ('Nassar et al. 2010', 'C1'),
+    'PP': ('Nassar et al. 2012', 'C2'),
+}
 
 
-def _get_split_half_reliabilities(subjs, tasks, analysis_fn, nreps=20):
+def _get_split_half_reliabilities(subjs, tasks, analysis_fn, nreps=20, verbose=0):
     """Perform within-subject split-half reliability analysis."""
-    # Initialize results dict
+    # Initialize results list
     results = []
 
     # Repeat split-half analysis over random splits
     for rep in range(nreps):
-        print(f'Running within-subject split-half analysis {rep+1}/{nreps}')
-       
+        if verbose > 0: print(f'Running within-subject split-half analysis {rep+1}/{nreps}')
+
         # Split the data
         subjs_a, subjs_b, tasks_a, tasks_b = split_within_subjects(subjs, tasks)
 
@@ -68,18 +76,45 @@ def _analysis_regression(subjs_a, subjs_b, tasks_a, tasks_b, model='model-pe-cpp
     return {f'Rho {col}': reg_corrs[k] for k, col in enumerate(beta_cols)}
 
 
-def do_split_half_analysis(subjs, tasks, nreps=20):
+def do_split_half_analysis(subjs, tasks, nreps=20, verbose=0):
     """Wrapper for performing all of the split half reliabilities on same splits."""
 
     # Package analysis functions as one
     def analysis_fn(subjs_a, subjs_b, tasks_a, tasks_b):
         results = {}
-        results.update(       _analysis_pca(subjs_a, subjs_b, tasks_a, tasks_b))
+        results.update(_analysis_pca(subjs_a, subjs_b, tasks_a, tasks_b))
         results.update(_analysis_regression(subjs_a, subjs_b, tasks_a, tasks_b, model='model-pe-cpp-ru'))
         return results
-    
+
     # Run split-half reliability analysis
-    return _get_split_half_reliabilities(subjs, tasks, analysis_fn, nreps=nreps)
+    return _get_split_half_reliabilities(subjs, tasks, analysis_fn, nreps=nreps, verbose=verbose)
+
+
+def multi_dataset_split_half_analysis(datasets=('MN', 'JN', 'PP'), nreps=20, verbose=0):
+    """Run split-half reliability analysis across multiple datasets.
+
+    Parameters:
+        datasets (tuple) - Dataset identifiers to analyze.
+        nreps (int)      - Number of split-half repetitions per dataset.
+        verbose (int)    - Verbosity level (0=silent, 1=progress).
+
+    Returns:
+        dict of dataset_name -> reliability DataFrame
+    """
+    # Initialize results dict
+    results = {}
+
+    # Run split-half analysis for each dataset
+    for dataset in datasets:
+        if verbose > 0: print(f"\nRunning split-half analysis for {dataset}...")
+
+        # Load dataset
+        subjs, tasks = read_experiment(file=dataset)
+
+        # Run analysis
+        results[dataset] = do_split_half_analysis(subjs, tasks, nreps=nreps)
+
+    return results
 
 
 def inner_angle(a,b):

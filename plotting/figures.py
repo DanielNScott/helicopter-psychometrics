@@ -284,15 +284,16 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
     if close: plt.close('all')
 
 
-def figure_4(reliabilities, savefig=True, close=True):
-    """Generate Figure 4: Split-half reliability of parameter estimates.
+def figure_4(reliabilities_by_dataset, dataset_config, savefig=True, close=True):
+    """Generate Figure 4: Split-half reliability of parameter estimates across datasets.
 
     Figure 4 layout:
         [A] PCA score reliability
         [B] Regression beta reliability
 
     Parameters:
-        reliabilities (pd.DataFrame) - DataFrame from do_split_half_analysis.
+        reliabilities_by_dataset (dict) - dataset_name -> DataFrame from do_split_half_analysis.
+        dataset_config (dict)           - dataset_name -> (label, color).
         savefig (bool) - Whether to save individual panel figures.
         close (bool) - Whether to close figures after saving.
     """
@@ -301,13 +302,13 @@ def figure_4(reliabilities, savefig=True, close=True):
 
     # --- Panel A: PCA score reliability ---
     fig, ax = plt.subplots()
-    plot_score_reliability(reliabilities, ax=ax)
+    plot_score_reliability_multi(reliabilities_by_dataset, dataset_config, ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig4_A' + FIG_FMT, dpi=300)
 
     # --- Panel B: Regression beta reliability ---
     fig, ax = plt.subplots()
-    plot_beta_reliability(reliabilities, ax=ax)
+    plot_beta_reliability_multi(reliabilities_by_dataset, dataset_config, ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig4_B' + FIG_FMT, dpi=300)
 
