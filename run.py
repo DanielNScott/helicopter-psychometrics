@@ -13,6 +13,7 @@ from estimation.mle import *
 from estimation.fim import *
 from estimation.main import recovery_analysis, recovery_analysis_high_pe
 from plotting.figures import *
+from plotting.compile import *
 
 # Settings
 create_figures = [7] #[1,2,3,4,5]
