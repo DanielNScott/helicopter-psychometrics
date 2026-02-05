@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 # Interactive plotting
 plt.ion()
 
+# Increase default text size for figures
+plt.rcParams.update({'font.size': 12})
+
 # Try to avoid recomputing
 USE_CACHE = True
 
