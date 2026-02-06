@@ -135,7 +135,7 @@ def read_experiment_matfile(file = 'McGuireNassar2014data.csv', catblks = True):
                 subj[int(i) - 1].append(cs)
 
     elif file == 'JN':
-        data = sp.io.loadmat('../data/mat-files/jNeuroBehav_toSend.mat')['jNeuroBehavData']
+        data = sp.io.loadmat('./data/mat-files/jNeuroBehav_toSend.mat')['jNeuroBehavData']
 
         # Each session is a subject - blocks are "within session".
         snums = np.unique(data['session'][0][0])
@@ -188,39 +188,33 @@ def read_experiment_matfile(file = 'McGuireNassar2014data.csv', catblks = True):
                 subj[int(i) - 1].append(cs)
 
     elif file == 'PP':
-        data = sp.io.loadmat('../data/mat-files/pupilPaperBehavData_toSend.mat')['pupilBehavData']
+        raw = sp.io.loadmat('./data/mat-files/pupilPaperBehavData_toSend.mat')['pupilBehavData']
+        data = {name: raw[name][0, 0] for name in raw.dtype.names}
 
         # Get subject numbers & initialize subjects array
         snums = np.unique(data['trialNumber'][:, 1])
-        subj = [{} for _ in range(len(snums))]
+        subj = [[] for _ in range(len(snums))]
 
         for i in snums:
             smsk = data['trialNumber'][:, 1] == i
-            trls = data['trialNumber'][smsk, 0]
-            blk_change = np.diff(np.append([0], trls < np.append([0], trls[:-1]))).astype(int)
-            n_blks = np.sum(blk_change)
+            trls = data['trialNumber'][smsk, 0].astype(int)
 
-            blk_list = []
-            ind_beg = 0
-            for j in range(1, n_blks + 1):
-                ind_end = np.where(blk_change == j)[0][-1]
-                blk_list.extend([j] * (ind_end - ind_beg + 1))
-                ind_beg = ind_end + 1
+            # Find block boundaries where trial numbers decrease
+            resets = np.where(np.diff(trls) < 0)[0] + 1
+            blk_starts = np.concatenate([[0], resets])
+            blk_ends = np.concatenate([resets, [len(trls)]])
 
-            blk_list = np.array(blk_list)
-            blks = np.arange(1, n_blks + 1)
-
-            for j in blks:
-                bmsk = blk_list == j
+            for b in range(len(blk_starts)):
                 msk = np.zeros_like(smsk, dtype=bool)
-                msk[smsk] = bmsk
+                subj_indices = np.where(smsk)[0][blk_starts[b]:blk_ends[b]]
+                msk[subj_indices] = True
 
                 # Temporary home for subject data
                 cs = {}
 
                 # Extract predictions and observations
-                pred = data['prediction'][msk, 0]
-                obs  = data['outcome'][msk, 0]
+                pred = data['prediction'][msk, 0].astype(float)
+                obs  = data['outcome'][msk, 0].astype(float)
 
                 # Compute prediction errors and updates
                 pe     = obs - pred
@@ -234,19 +228,19 @@ def read_experiment_matfile(file = 'McGuireNassar2014data.csv', catblks = True):
                 }
 
                 # Compute changepoints from state changes
-                cp = np.append(0, np.diff(data['mean'][msk, 0]) != 0).astype(int)
-                new_blk = np.zeros(sum(msk), dtype=int)
-                new_blk[0] = 1
+                cp = np.append(0, np.diff(data['mean'][msk, 0]) != 0).astype(float)
+                new_blk = np.zeros(sum(msk))
+                new_blk[0] = 1.0
 
                 cs['cpt'] = {
                     'state': {
                         'obs':     obs,
-                        'state':   data['mean'][msk, 0],
+                        'state':   data['mean'][msk, 0].astype(float),
                         'cp':      cp,
                         'new_blk': new_blk,
                     },
                     'params': {
-                        'noise_sd': data['stdDev'][msk, 0],
+                        'noise_sd': data['stdDev'][msk, 0].astype(float),
                         'hazard':   np.ones(sum(msk)) * np.sum(cp) / sum(msk),
                         'bnds_ls':  [25, 275],
                         'bnds_obs': [0, 300],
@@ -254,7 +248,7 @@ def read_experiment_matfile(file = 'McGuireNassar2014data.csv', catblks = True):
                 }
 
                 # Package
-                subj[int(i) - 1].setdefault('blk', {})[j] = cs
+                subj[int(i) - 1].append(cs)
 
     # Concatenate blocks if requested
     if catblks:

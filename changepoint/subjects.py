@@ -322,6 +322,8 @@ def get_cpp(obs, pred, obs_sd, bnds, hazard, mix=1.0):
 
 def ratio_to_prob(ratio):
     """Convert a likelihood ratio to a probability."""
+    if np.isinf(ratio):
+        return 1.0
     return ratio / (1 + ratio)
 
 def get_cpp_sigmoid(pe, obs_sd=25, hazard=0.1, lp=0, up=1, N=300, loc=0, unc=1, mix=1, la=0, ua=1, debug=False):
