@@ -36,3 +36,6 @@ FIG_CLEANUP = True
 FIG_STD_WIDTH  = 6.4
 FIG_STD_HEIGHT = 4.8
 FIG_WIDE_WIDTH = 9.6  # 1.5x standard width
+
+# Linear model for single-model displays
+LM_MODEL = 'model-pe-cpp-ru-deltas'

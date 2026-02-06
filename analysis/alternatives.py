@@ -7,8 +7,6 @@ from changepoint.alternatives import (
 from changepoint.tasks import simulate_cpt
 from analysis.analysis import fit_linear_models
 
-LM_MODEL = 'model-pe-cpp-ru'
-
 # Model display configuration: name -> (label, color)
 ALT_MODEL_CONFIG = {
     'ph': ('Pearce-Hall', 'C0'),

@@ -68,7 +68,7 @@ def plot_pe_update_model_comparison(subj_pe, subj_cpp, ax=None):
     ax.legend()
 
 
-def plot_subj_betas_strip(betas, model='model-pe-cpp-ru-prod-deltas', ax=None):
+def plot_subj_betas_strip(betas, model=LM_MODEL, ax=None):
     """Plot strip plot of subject beta coefficients with normative reference.
 
     Parameters:

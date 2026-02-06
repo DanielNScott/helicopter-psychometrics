@@ -160,9 +160,8 @@ def figure_2(tasks, subj_pcp_lr, group_pca_basis, subj_pca_lr_scores, subj_linea
     # --- Panel C: Correlation matrix between PC scores and betas ---
     # Build correlation matrix
     score_cols = [c for c in subj_pca_lr_scores.columns if c.startswith('Score_')][:2]
-    lm_model = 'model-pe-cpp-ru-prod-deltas'
-    lm_terms = get_model_terms(lm_model)
-    beta_cols = [f'{lm_model}_beta_{t}' for t in lm_terms]
+    lm_terms = get_model_terms(LM_MODEL)
+    beta_cols = [f'{LM_MODEL}_beta_{t}' for t in lm_terms]
     beta_cols = [c for c in beta_cols if c in subj_linear_models.columns]
 
     # Combine into single dataframe for correlation
@@ -256,7 +255,7 @@ def figure_3(subjs, tasks, subj_linear_models, subj_pcp_lr, group_pca_basis, sub
 
     # --- Panel B: Beta strip plots ---
     fig, ax = plt.subplots()
-    plot_subj_betas_strip(subj_linear_models, model='model-pe-cpp-ru-prod-deltas', ax=ax)
+    plot_subj_betas_strip(subj_linear_models, model=LM_MODEL, ax=ax)
     ax.set_title('Subject Beta Coefficients')
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig3_B' + FIG_FMT, dpi=300)

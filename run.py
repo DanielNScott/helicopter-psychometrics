@@ -23,7 +23,7 @@ create_figures = [6] #[1,2,3,4,5]
 subjs, tasks = read_experiment(max_subj=MAX_SUBJ_NUM)
 
 # Fit linear models to subjects
-subj_linear_models = fit_linear_models(subjs, model='model-pe-cpp-ru-prod-deltas')
+subj_linear_models = fit_linear_models(subjs, model=LM_MODEL)
 
 # Get peri-cp statistics
 subj_pcp_lr, subj_pcp_cpp, subj_pcp_ru = get_peri_cp_stats(subjs, tasks)
