@@ -255,29 +255,13 @@ def compile_figure_7(cleanup=FIG_CLEANUP):
 
 
 def compile_figure_8(cleanup=FIG_CLEANUP):
-    """Compile Figure 8: row 1 has A and B, row 2 has C (wide panel for alt models)."""
-    panel_a = FIGURES_DIR + 'fig8_A' + FIG_FMT
-    panel_b = FIGURES_DIR + 'fig8_B' + FIG_FMT
-    panel_c = FIGURES_DIR + 'fig8_C' + FIG_FMT
-
-    row1 = FIGURES_DIR + 'fig8_row1.svg'
-    combined = FIGURES_DIR + 'fig8_combined.svg'
-    labeled = FIGURES_DIR + 'fig8_labeled.svg'
-    final = FIGURES_DIR + 'fig8_final.svg'
-
-    # Build row 1
-    _combine_row([panel_a, panel_b], row1)
-    _combine_grid([row1, panel_c], combined)
-
-    # Add labels
-    _add_grid_labels(combined, labeled,
-                     [['A', 'B'], ['C', None]],
-                     col_widths=[PANEL_WIDTH, PANEL_WIDTH],
-                     row_heights=[PANEL_HEIGHT, PANEL_HEIGHT * 2])
-
-    panel_files = [panel_a, panel_b, panel_c]
-    intermediate = [row1, combined, labeled]
-    _finalize(labeled, final, panel_files, intermediate, cleanup)
+    """Compile Figure 8: single row with 3 panels (alternative models comparison)."""
+    _compile_grid(
+        fig_num=8,
+        layout=[['A', 'B', 'C']],
+        labels=[['A', 'B', 'C']],
+        cleanup=cleanup
+    )
 
 
 def compile_figure_9(cleanup=FIG_CLEANUP):

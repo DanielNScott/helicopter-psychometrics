@@ -18,7 +18,6 @@ from plotting.compile import *
 
 # Settings
 create_figures = [6] #[1,2,3,4,5]
-run_recovery = True
 
 # Read experimental data
 subjs, tasks = read_experiment(max_subj=MAX_SUBJ_NUM)

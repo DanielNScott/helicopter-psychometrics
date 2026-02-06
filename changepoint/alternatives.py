@@ -5,7 +5,7 @@ from changepoint.subjects import Subject, Responses, get_beliefs
 # Alternative model parameter ranges
 ALT_PARAM_RANGES = {
     'ph': {'eta': (0.05, 0.95), 'alpha_0': (0.05, 0.95)},
-    'li': {'lam': (0.05, 0.95), 'gamma': (0.0, 0.3)},
+    'li': {'rate': (0.1, 0.5), 'threshold': (10.0, 40.0)},
 }
 
 # Task blocks
@@ -45,25 +45,37 @@ def simulate_ph(obs, eta, alpha_0, init_pred=INIT_PRED, noise_sd_update=NOISE_SD
     return Subject(responses=responses)
 
 
-def simulate_li(obs, lam, gamma, init_pred=INIT_PRED, noise_sd_update=NOISE_SD_UPDATE,
-                prior_mean=PRIOR_MEAN):
-    """Leaky integrator with prior pull: exponential decay plus mean reversion."""
+def simulate_li(obs, rate, threshold, init_pred=INIT_PRED, noise_sd_update=NOISE_SD_UPDATE,
+                k=0.1, alpha_0=0.5):
+    """Leaky integrator: learning rate adapts toward sigmoid of |PE|.
+
+    Learning rate increases toward 1 when |PE| is large (surprise),
+    and decays toward 0 when |PE| is small (stability).
+
+    Parameters:
+        obs (array)          - Sequence of observations.
+        rate (float)         - How fast alpha moves toward target (0.1-0.5).
+        threshold (float)    - PE magnitude where target = 0.5.
+        init_pred (float)    - Initial prediction.
+        noise_sd_update (float) - SD of response noise.
+        k (float)            - Sigmoid steepness.
+        alpha_0 (float)      - Initial learning rate.
+    """
     n = len(obs)
     responses = Responses(n)
     responses.pred[0] = init_pred
+    alpha = alpha_0
 
     for t in range(n):
         responses.pe[t] = obs[t] - responses.pred[t]
-        prior_pull = gamma * (prior_mean - responses.pred[t])
         noise = np.random.normal(0, noise_sd_update)
-        responses.update[t] = lam * responses.pe[t] + prior_pull + noise
+        responses.update[t] = alpha * responses.pe[t] + noise
         responses.pred[t + 1] = np.clip(responses.pred[t] + responses.update[t], 0, 300)
+        responses.lr[t] = alpha
 
-        # Effective learning rate
-        if responses.pe[t] != 0:
-            responses.lr[t] = responses.update[t] / responses.pe[t]
-        else:
-            responses.lr[t] = lam
+        # Learning rate adapts toward sigmoid of |PE|
+        target = 1.0 / (1.0 + np.exp(-k * (np.abs(responses.pe[t]) - threshold)))
+        alpha = alpha + rate * (target - alpha)
 
     return Subject(responses=responses)
 

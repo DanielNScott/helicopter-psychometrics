@@ -462,7 +462,7 @@ def figure_8(alt_analysis, real_lm, savefig=True, close=True):
     Figure 8 layout:
         [A] Beta comparison (alternative models vs real data)
         [B] Variance explained comparison
-        [C] Example subject traces (2 rows x 3 cols)
+        [C] Model learning rates on same task
 
     Parameters:
         alt_analysis (dict) - Output from alt_model_analysis with 'results', 'tasks', 'lm_model'.
@@ -489,12 +489,9 @@ def figure_8(alt_analysis, real_lm, savefig=True, close=True):
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig8_B' + FIG_FMT, dpi=300)
 
-    # Panel C: Example subjects (2 rows x 3 cols)
-    n_models = len(results)
-    fig, axes = plt.subplots(n_models, 3, figsize=(16, 3.5 * n_models))
-    if n_models == 1:
-        axes = axes.reshape(1, -1)
-    plot_example_subjects(results, tasks, lm_model, ax_grid=axes)
+    # Panel C: Model learning rates on same task
+    fig, ax = plt.subplots()
+    plot_model_learning_rates(tasks[0], ax=ax)
     fig.tight_layout()
     if savefig: fig.savefig(FIGURES_DIR + 'fig8_C' + FIG_FMT, dpi=300)
 
